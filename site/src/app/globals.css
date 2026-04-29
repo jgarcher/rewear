@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+@theme {
+  /* === ReWear brand colours (ADR 007) === */
+  --color-forest-50: #EAF1ED;
+  --color-forest-100: #C9DFD3;
+  --color-forest-500: #2D6A47;
+  --color-forest-600: #235437;
+  --color-forest-700: #1A4029;
+  --color-forest-900: #0F2818;
+
+  --color-linen-50: #FBF8F2;
+  --color-linen-100: #F5F0E6;
+  --color-linen-200: #EDE6D6;
+  --color-linen-300: #DFD5BF;
+
+  --color-charcoal: #1A1A1A;
+  --color-charcoal-soft: #4A4A4A;
+  --color-charcoal-muted: #7A7A7A;
+  --color-charcoal-placeholder: #A8A8A8;
+
+  --color-clay-100: #F2DDD2;
+  --color-clay-500: #C2876B;
+  --color-clay-600: #A66E54;
+
+  --color-sage-100: #E2E7DD;
+  --color-sage-500: #7A8B6C;
+  --color-sage-600: #637353;
+
+  --color-error: #9B3636;
+
+  /* === Typography (ADR 008) === */
+  --font-heading: var(--font-fraunces), Georgia, serif;
+  --font-body: var(--font-inter), system-ui, -apple-system, sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html, body {
+  background-color: var(--color-linen-100);
+  color: var(--color-charcoal);
+}
+
+body {
+  font-family: var(--font-body);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6,
+.font-heading {
+  font-family: var(--font-heading);
+  letter-spacing: -0.01em;
+}
+
+/* Subtle linen-fabric texture utility */
+.bg-linen-texture {
+  background-color: var(--color-linen-100);
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(45, 106, 71, 0.015) 0%, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(194, 135, 107, 0.015) 0%, transparent 40%);
+}
+
+/* Quiet underline for inline links */
+.prose-link {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--color-forest-500);
+  transition: text-decoration-color 0.2s;
+}
+.prose-link:hover {
+  text-decoration-color: var(--color-forest-700);
+}

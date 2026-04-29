@@ -1,0 +1,160 @@
+{
+  "_meta": {
+    "description": "Curated, sourced facts for the 'Did You Know' feed on the Home screen. Each fact is plain-language, voice-aligned, and cites a credible primary source. Rotates daily. New facts can be added — every entry must include source + URL + date checked.",
+    "voice_rule": "Observational, never preachy. State the fact, attribute the source. No 'shocking truth' framing. No exclamation marks. No call-to-action — that belongs elsewhere in the app.",
+    "last_reviewed": "2026-04-29",
+    "total_facts": 15
+  },
+  "facts": [
+    {
+      "id": "dyk-001",
+      "category": "behaviour",
+      "fact": "The average garment is worn between 7 and 10 times before being discarded.",
+      "source": "Ellen MacArthur Foundation",
+      "source_publication": "A New Textiles Economy: Redesigning fashion's future",
+      "source_year": 2017,
+      "source_url": "https://ellenmacarthurfoundation.org/a-new-textiles-economy",
+      "confidence": "peer-reviewed"
+    },
+    {
+      "id": "dyk-002",
+      "category": "carbon",
+      "fact": "Fashion produces around 8% of global carbon emissions — more than aviation and shipping combined.",
+      "source": "UNECE / Quantis",
+      "source_publication": "Measuring Fashion 2018",
+      "source_year": 2018,
+      "source_url": "https://quantis.com/report/measuring-fashion-report/",
+      "confidence": "industry-report"
+    },
+    {
+      "id": "dyk-003",
+      "category": "water",
+      "fact": "It takes around 2,700 litres of water to produce one cotton t-shirt — about 3 years of drinking water for one person.",
+      "source": "WRAP UK / WWF",
+      "source_publication": "The Impact of a Cotton T-Shirt",
+      "source_year": 2013,
+      "source_url": "https://www.worldwildlife.org/stories/the-impact-of-a-cotton-t-shirt",
+      "confidence": "industry-report"
+    },
+    {
+      "id": "dyk-004",
+      "category": "behaviour",
+      "fact": "Extending the active life of a garment by just 9 months reduces its carbon, water, and waste footprints by around 20–30%.",
+      "source": "WRAP UK",
+      "source_publication": "Valuing Our Clothes",
+      "source_year": 2017,
+      "source_url": "https://wrap.org.uk/resources/report/valuing-our-clothes-cost-uk-fashion",
+      "confidence": "peer-reviewed"
+    },
+    {
+      "id": "dyk-005",
+      "category": "circular",
+      "fact": "Less than 1% of the material used to make clothing is recycled into new clothing.",
+      "source": "Ellen MacArthur Foundation",
+      "source_publication": "A New Textiles Economy",
+      "source_year": 2017,
+      "source_url": "https://ellenmacarthurfoundation.org/a-new-textiles-economy",
+      "confidence": "peer-reviewed"
+    },
+    {
+      "id": "dyk-006",
+      "category": "water",
+      "fact": "The fashion industry uses around 93 billion cubic metres of water a year — enough to meet the household needs of 5 million people.",
+      "source": "Ellen MacArthur Foundation",
+      "source_publication": "A New Textiles Economy",
+      "source_year": 2017,
+      "source_url": "https://ellenmacarthurfoundation.org/a-new-textiles-economy",
+      "confidence": "peer-reviewed"
+    },
+    {
+      "id": "dyk-007",
+      "category": "water",
+      "fact": "A single pair of cotton jeans uses around 7,500 litres of water to produce — nearly 7 years of drinking water for one person.",
+      "source": "UN Environment Programme",
+      "source_publication": "UN Alliance for Sustainable Fashion",
+      "source_year": 2019,
+      "source_url": "https://unfashionalliance.org/",
+      "confidence": "industry-report"
+    },
+    {
+      "id": "dyk-008",
+      "category": "microplastic",
+      "fact": "Polyester clothing sheds around 500,000 tonnes of microfibres into oceans every year — about 50 billion plastic bottles' worth.",
+      "source": "Ellen MacArthur Foundation",
+      "source_publication": "A New Textiles Economy",
+      "source_year": 2017,
+      "source_url": "https://ellenmacarthurfoundation.org/a-new-textiles-economy",
+      "confidence": "peer-reviewed"
+    },
+    {
+      "id": "dyk-009",
+      "category": "economic",
+      "fact": "Around £140 million worth of clothing ends up in UK landfill each year — about 350,000 tonnes.",
+      "source": "WRAP UK",
+      "source_publication": "Valuing Our Clothes",
+      "source_year": 2017,
+      "source_url": "https://wrap.org.uk/resources/report/valuing-our-clothes-cost-uk-fashion",
+      "confidence": "peer-reviewed"
+    },
+    {
+      "id": "dyk-010",
+      "category": "economic",
+      "fact": "The second-hand clothing market is growing roughly nine times faster than the new clothing market.",
+      "source": "ThredUp",
+      "source_publication": "Resale Report",
+      "source_year": 2023,
+      "source_url": "https://www.thredup.com/resale/",
+      "confidence": "industry-report"
+    },
+    {
+      "id": "dyk-011",
+      "category": "carbon",
+      "fact": "Producing one kilogram of new cotton emits around 5.5 kg of CO₂. Re-wearing what you already own avoids that.",
+      "source": "Higg Materials Sustainability Index v3",
+      "source_publication": "Higg MSI",
+      "source_year": 2023,
+      "source_url": "https://msi.higg.org/",
+      "confidence": "industry-report"
+    },
+    {
+      "id": "dyk-012",
+      "category": "behaviour",
+      "fact": "Around 30% of clothes in UK wardrobes haven't been worn for at least a year.",
+      "source": "WRAP UK",
+      "source_publication": "Valuing Our Clothes",
+      "source_year": 2017,
+      "source_url": "https://wrap.org.uk/resources/report/valuing-our-clothes-cost-uk-fashion",
+      "confidence": "peer-reviewed"
+    },
+    {
+      "id": "dyk-013",
+      "category": "behaviour",
+      "fact": "The average person in the UK buys around 26 garments a year — more than double the European average.",
+      "source": "WRAP UK",
+      "source_publication": "Textiles 2030",
+      "source_year": 2021,
+      "source_url": "https://wrap.org.uk/taking-action/textiles/initiatives/textiles-2030",
+      "confidence": "industry-report"
+    },
+    {
+      "id": "dyk-014",
+      "category": "carbon",
+      "fact": "If every UK household kept their clothes for one year longer, it would be the equivalent of taking around 700,000 cars off the road.",
+      "source": "WRAP UK",
+      "source_publication": "Valuing Our Clothes",
+      "source_year": 2017,
+      "source_url": "https://wrap.org.uk/resources/report/valuing-our-clothes-cost-uk-fashion",
+      "confidence": "peer-reviewed"
+    },
+    {
+      "id": "dyk-015",
+      "category": "circular",
+      "fact": "Buying half your wardrobe second-hand instead of new can cut your annual fashion footprint by around 40%.",
+      "source": "WRAP UK / Ellen MacArthur Foundation",
+      "source_publication": "Valuing Our Clothes / A New Textiles Economy",
+      "source_year": 2017,
+      "source_url": "https://wrap.org.uk/resources/report/valuing-our-clothes-cost-uk-fashion",
+      "confidence": "peer-reviewed"
+    }
+  ]
+}
