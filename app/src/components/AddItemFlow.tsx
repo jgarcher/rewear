@@ -228,18 +228,51 @@ export function AddItemFlow() {
             selfie. We'll figure out what's in it.
           </p>
 
-          <label className="mt-8 inline-block cursor-pointer rounded-full bg-forest-500 px-6 py-3 text-base font-medium text-linen-100 transition-colors hover:bg-forest-600">
-            Pick a photo
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFileInput}
-              className="sr-only"
-            />
-          </label>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            {/* 1. Take photo (rear camera) */}
+            <label className="inline-flex cursor-pointer items-center justify-center rounded-full bg-forest-500 px-6 py-3 text-base font-medium text-linen-100 transition-colors hover:bg-forest-600">
+              Take a photo
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileInput}
+                className="sr-only"
+              />
+            </label>
 
-          <p className="mt-4 text-xs text-charcoal-muted">
-            Take one now, or pick from your library. JPG or PNG, up to 10 MB.
+            {/* 2. Take selfie (front camera) */}
+            <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-forest-500 bg-linen-50 px-6 py-3 text-base font-medium text-forest-700 transition-colors hover:bg-forest-50">
+              Take a selfie
+              <input
+                type="file"
+                accept="image/*"
+                capture="user"
+                onChange={handleFileInput}
+                className="sr-only"
+              />
+            </label>
+
+            {/* 3. Upload from library / files */}
+            <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-charcoal/15 bg-linen-50 px-6 py-3 text-base font-medium text-charcoal-soft transition-colors hover:border-forest-500 hover:text-forest-700">
+              Upload
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileInput}
+                className="sr-only"
+              />
+            </label>
+          </div>
+
+          <p className="mt-5 text-xs text-charcoal-muted">
+            <strong className="text-charcoal-soft">Take a photo</strong>:
+            rear camera, for items on a surface or hanger. ·{" "}
+            <strong className="text-charcoal-soft">Take a selfie</strong>:
+            front camera, for what you're wearing right now (great for
+            multi-item detection). ·{" "}
+            <strong className="text-charcoal-soft">Upload</strong>: pick an
+            existing photo from your library or files. JPG or PNG, up to 10 MB.
           </p>
         </div>
       </div>
