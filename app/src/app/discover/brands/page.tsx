@@ -13,6 +13,23 @@ type Brand = {
   category: string | null;
 };
 
+// Category → accent colour for the hero strip on each card
+const CATEGORY_ACCENT: Record<string, string> = {
+  outdoor: "bg-forest-500",
+  minimal: "bg-charcoal",
+  feminine: "bg-clay-500",
+  basics: "bg-sage-500",
+  modern: "bg-forest-700",
+  luxury: "bg-charcoal",
+  everyday: "bg-sage-600",
+  shoes: "bg-clay-600",
+  denim: "bg-forest-700",
+};
+
+function accent(category: string | null): string {
+  return (category && CATEGORY_ACCENT[category]) || "bg-forest-500";
+}
+
 export default async function BrandsPage() {
   const supabase = await createClient();
   const { data: brands } = await supabase
@@ -51,45 +68,52 @@ export default async function BrandsPage() {
             </p>
           </div>
         ) : (
-          <div className="mt-10 grid gap-4 sm:grid-cols-2">
+          <div className="mt-10 grid gap-5 sm:grid-cols-2">
             {list.map((b) => (
               <Link
                 key={b.id}
                 href={`/discover/brands/${b.id}`}
-                className="group block rounded-2xl border border-linen-200 bg-linen-50 p-6 transition-colors hover:border-forest-500"
+                className="group overflow-hidden rounded-3xl border border-linen-200 bg-linen-50 transition-all hover:border-forest-500 hover:shadow-sm"
               >
-                <div className="flex items-baseline justify-between gap-3">
-                  <h2 className="font-heading text-xl font-medium text-charcoal">
-                    {b.name}
-                  </h2>
-                  {b.category && (
-                    <span className="text-xs uppercase tracking-wider text-charcoal-muted">
-                      {b.category}
-                    </span>
-                  )}
-                </div>
-                {b.description && (
-                  <p className="mt-3 text-sm leading-relaxed text-charcoal-soft">
-                    {b.description}
-                  </p>
-                )}
-                {b.tags && b.tags.length > 0 && (
-                  <div className="mt-4 flex flex-wrap gap-1.5">
-                    {b.tags.slice(0, 3).map((t) => (
-                      <span
-                        key={t}
-                        className="rounded-full bg-forest-50 px-2.5 py-0.5 text-xs text-forest-700"
-                      >
-                        {t.replaceAll("-", " ")}
-                      </span>
-                    ))}
-                    {b.tags.length > 3 && (
-                      <span className="rounded-full px-2.5 py-0.5 text-xs text-charcoal-muted">
-                        +{b.tags.length - 3}
+                {/* Coloured top strip */}
+                <div className={`h-2 w-full ${accent(b.category)}`} />
+
+                <div className="p-7">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h2 className="font-heading text-2xl font-medium tracking-tight text-charcoal">
+                      {b.name}
+                    </h2>
+                    {b.category && (
+                      <span className="shrink-0 text-xs uppercase tracking-wider text-charcoal-muted">
+                        {b.category}
                       </span>
                     )}
                   </div>
-                )}
+
+                  {b.description && (
+                    <p className="mt-4 text-sm leading-relaxed text-charcoal-soft">
+                      {b.description}
+                    </p>
+                  )}
+
+                  {b.tags && b.tags.length > 0 && (
+                    <div className="mt-5 flex flex-wrap gap-1.5">
+                      {b.tags.slice(0, 3).map((t) => (
+                        <span
+                          key={t}
+                          className="rounded-full bg-linen-200 px-2.5 py-0.5 text-xs text-charcoal-soft"
+                        >
+                          {t.replaceAll("-", " ")}
+                        </span>
+                      ))}
+                      {b.tags.length > 3 && (
+                        <span className="rounded-full px-2.5 py-0.5 text-xs text-charcoal-muted">
+                          +{b.tags.length - 3}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </Link>
             ))}
           </div>

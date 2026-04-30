@@ -41,6 +41,12 @@ export default async function ProfilePage() {
 
         <div className="mt-12 space-y-3">
           <Link
+            href="/profile/history"
+            className="block rounded-xl border border-linen-200 bg-linen-50 px-6 py-4 text-charcoal transition-colors hover:border-forest-500"
+          >
+            Outfit history
+          </Link>
+          <Link
             href="/profile/settings"
             className="block rounded-xl border border-linen-200 bg-linen-50 px-6 py-4 text-charcoal transition-colors hover:border-forest-500"
           >

@@ -334,6 +334,7 @@ export function AddItemFlow() {
               name="brand"
               type="text"
               maxLength={120}
+              defaultValue={s?.brand ?? ""}
               placeholder="Cos"
               className="mt-2 block w-full rounded-xl border border-linen-300 bg-linen-50 px-4 py-3 text-base text-charcoal placeholder:text-charcoal-placeholder focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
             />

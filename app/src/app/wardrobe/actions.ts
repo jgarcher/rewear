@@ -267,3 +267,56 @@ export async function saveItemAction(formData: FormData) {
   revalidatePath("/");
   redirect(`/wardrobe/${itemId}`);
 }
+
+export async function updateItemAction(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/signin");
+
+  const itemId = (formData.get("item_id") as string)?.trim();
+  const name = (formData.get("name") as string)?.trim();
+  const category = formData.get("category") as ItemCategory;
+  const primary_colour = (formData.get("primary_colour") as string)?.trim();
+
+  if (!itemId) throw new Error("Missing item id");
+  if (!name || !category || !primary_colour) {
+    throw new Error("Name, category, and colour are required");
+  }
+
+  const subcategory =
+    ((formData.get("subcategory") as string) || "").trim() || null;
+  const brand = ((formData.get("brand") as string) || "").trim() || null;
+  const material = ((formData.get("material") as string) || "").trim() || null;
+  const notes = ((formData.get("notes") as string) || "").trim() || null;
+
+  const seasons = (formData.getAll("seasons") as string[]).filter(Boolean);
+  const occasions = (formData.getAll("occasions") as string[]).filter(Boolean);
+
+  const { error } = await supabase
+    .from("wardrobe_items")
+    .update({
+      name,
+      category,
+      subcategory,
+      primary_colour,
+      brand,
+      material,
+      notes,
+      seasons: seasons.length > 0 ? seasons : ["all"],
+      occasions: occasions.length > 0 ? occasions : ["casual"],
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", itemId)
+    .eq("user_id", user.id);
+
+  if (error) {
+    console.error("Update failed:", error);
+    throw new Error(`Could not save changes: ${error.message}`);
+  }
+
+  revalidatePath("/wardrobe");
+  revalidatePath(`/wardrobe/${itemId}`);
+  redirect(`/wardrobe/${itemId}`);
+}

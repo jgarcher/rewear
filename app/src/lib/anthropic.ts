@@ -188,6 +188,12 @@ export const AutoTagSchema = z.object({
     .string()
     .nullable()
     .describe("e.g. 'knit jumper', 'tank', 'midi skirt', 'trainers'."),
+  brand: z
+    .string()
+    .nullable()
+    .describe(
+      "Brand name if visible on a label, hangtag, embroidery, or print in the photo. Be conservative — only fill if you can read it clearly. Capitalise normally (e.g. 'Cos', 'Patagonia', 'Levi's', 'Reformation'). Otherwise null."
+    ),
   primary_colour: z
     .string()
     .nullable()
@@ -223,6 +229,7 @@ Rules:
 - Colour vocabulary is fixed — use only plain English from: black, charcoal, grey, white, cream, ivory, beige, tan, brown, camel, forest green, sage, olive, navy, mid blue, dark indigo, light blue, red, clay, pink, lilac, purple, yellow, mustard, mint, multicolour.
 - Material: only fill when obvious from the photo (visible knit texture → wool; obvious denim, silk, leather). Otherwise null.
 - Suggested name: short, descriptive, no brand. Reference colour + style. Examples: "Forest-green knit jumper", "Cream silk camisole", "Indigo straight jeans", "Black ankle boots".
+- Brand: read it off a label, hangtag, embroidery, or print only if it's clearly legible. Don't guess from style or shape. Common brands: Cos, Reformation, Levi's, Uniqlo, Veja, Patagonia, Sandro, Acne Studios, Ganni, Rixo, Sunspel, Saint James, Doen, Whistles, Folk, Aeyde, A.Emery, Repetto, Pangaia, Kings of Indigo, MUD Jeans.
 - Caption (voice-led one-liner the user reads at the top of the review screen):
    - "Looks like a forest-green knit jumper."
    - "A cream silk camisole — nice."

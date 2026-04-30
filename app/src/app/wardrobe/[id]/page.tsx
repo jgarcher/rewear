@@ -126,6 +126,12 @@ export default async function ItemDetailPage({
         {/* Action buttons */}
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <MarkAsWornButton itemId={item.id} />
+          <Link
+            href={`/wardrobe/${item.id}/edit`}
+            className="rounded-full border border-charcoal/15 px-6 py-3 text-center text-sm font-medium text-charcoal-soft transition-colors hover:border-forest-500 hover:text-forest-700"
+          >
+            Edit details
+          </Link>
         </div>
 
         {/* Notes */}
