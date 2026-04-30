@@ -165,16 +165,7 @@ Build me an outfit.`,
 
 // === Auto-tag (Claude vision) — ADR 014 Feature 2 ===
 
-export const AutoTagSchema = z.object({
-  recognised: z
-    .boolean()
-    .describe("Set false if the photo isn't clearly a single clothing item."),
-  caption: z
-    .string()
-    .max(200)
-    .describe(
-      "ReWear-voice one-liner the user sees at the top of the review screen. Examples: 'Looks like a forest-green knit jumper.' / 'A cream silk camisole — nice.' / 'Vintage straight-leg jeans.'"
-    ),
+export const AutoTagItemSchema = z.object({
   suggested_name: z
     .string()
     .nullable()
@@ -192,7 +183,7 @@ export const AutoTagSchema = z.object({
     .string()
     .nullable()
     .describe(
-      "Brand name if visible on a label, hangtag, embroidery, or print in the photo. Be conservative — only fill if you can read it clearly. Capitalise normally (e.g. 'Cos', 'Patagonia', 'Levi's', 'Reformation'). Otherwise null."
+      "Brand name only if visibly legible on a label, hangtag, embroidery, or print. Don't guess from style. Capitalise normally."
     ),
   primary_colour: z
     .string()
@@ -209,36 +200,64 @@ export const AutoTagSchema = z.object({
     ),
   seasons: z.array(z.enum(["winter", "spring", "summer", "autumn", "all"])),
   occasions: z.array(z.enum(["casual", "work", "evening", "athletic", "special"])),
+});
+
+export type AutoTagItem = z.infer<typeof AutoTagItemSchema>;
+
+export const AutoTagSchema = z.object({
+  recognised: z
+    .boolean()
+    .describe(
+      "Set false if the photo isn't clearly clothing (blurry, multiple non-clothing items, weird angle, not garments)."
+    ),
+  caption: z
+    .string()
+    .max(240)
+    .describe(
+      "ReWear-voice one-liner. Single item: 'Looks like a forest-green knit jumper.' Multiple: 'Three items — a forest knit, indigo straight jeans, white trainers.' Always lead with what you see."
+    ),
+  items: z
+    .array(AutoTagItemSchema)
+    .describe(
+      "ONE ENTRY PER DISTINCT WARDROBE ITEM visible in the photo. A flat lay of one piece returns 1 item. A selfie of someone wearing a top and bottom returns 2 items. An outfit shot with top + bottom + shoes returns 3 items. Don't return separate entries for the same garment from different angles."
+    ),
   warnings: z
     .array(z.string())
-    .describe(
-      "Any concerns about the photo: blurry, dark, multiple items, weird angle, not clothing."
-    ),
+    .describe("Any photo concerns: dark, blurry, item not clearly visible."),
 });
 
 export type AutoTagResult = z.infer<typeof AutoTagSchema>;
 
-const AUTO_TAG_SYSTEM_PROMPT = `You are the AI behind ReWear, a wardrobe app. The user has just photographed a clothing item to add to their digital wardrobe.
+const AUTO_TAG_SYSTEM_PROMPT = `You are the AI behind ReWear, a wardrobe app. The user has just photographed clothing to add to their digital wardrobe.
 
 Speak as ReWear: a quietly confident, observational older-sister voice. Short sentences. No emoji. No hustle slang. UK English throughout (colour, behaviour, organise).
 
-Your job: look at the photo and pre-fill metadata fields the user can confirm or edit.
+Your job: look at the photo and identify EVERY distinct clothing item visible, then pre-fill metadata for each so the user can confirm or edit.
 
-Rules:
+CRITICAL — multiple items in one photo:
+- A flat lay or close-up of one garment → return 1 item.
+- A selfie/mirror shot of someone wearing a top + bottom → return 2 items (top, bottom).
+- A full outfit photo with top + bottom + shoes → return 3 items.
+- A hanger photo with two pieces → return 2 items.
+- Don't return separate entries for the same garment from different angles.
+- Skip accessories like bags or jewellery unless they're clearly the focus.
+- A dress is one item even though it covers torso + legs.
+- Layered tops (e.g. cardigan over a shirt) → 2 items if both are clearly visible.
+
+For each detected item, fill the fields:
 - Be conservative. Set fields to null if you can't see clearly. Don't guess.
 - Colour vocabulary is fixed — use only plain English from: black, charcoal, grey, white, cream, ivory, beige, tan, brown, camel, forest green, sage, olive, navy, mid blue, dark indigo, light blue, red, clay, pink, lilac, purple, yellow, mustard, mint, multicolour.
-- Material: only fill when obvious from the photo (visible knit texture → wool; obvious denim, silk, leather). Otherwise null.
-- Suggested name: short, descriptive, no brand. Reference colour + style. Examples: "Forest-green knit jumper", "Cream silk camisole", "Indigo straight jeans", "Black ankle boots".
-- Brand: read it off a label, hangtag, embroidery, or print only if it's clearly legible. Don't guess from style or shape. Common brands: Cos, Reformation, Levi's, Uniqlo, Veja, Patagonia, Sandro, Acne Studios, Ganni, Rixo, Sunspel, Saint James, Doen, Whistles, Folk, Aeyde, A.Emery, Repetto, Pangaia, Kings of Indigo, MUD Jeans.
-- Caption (voice-led one-liner the user reads at the top of the review screen):
-   - "Looks like a forest-green knit jumper."
-   - "A cream silk camisole — nice."
-   - "Vintage straight-leg jeans."
-   - "Black ankle boots. Worn-in."
-- Categories: pick exactly one of top, tshirt, bottom, dress, coat, shoes, accessory.
-- Seasons: any combination of winter / spring / summer / autumn / all.
-- Occasions: any combination of casual / work / evening / athletic / special.
-- If the photo is ambiguous (blurry, multiple items, not clearly clothing): set recognised: false, write a brief voice-led caption explaining what you'd need, and add a clear warning.`;
+- Material: only fill when obvious (visible knit texture → wool; obvious denim, silk, leather). Otherwise null.
+- Suggested name: short, descriptive, no brand. Reference colour + style. "Forest-green knit jumper", "Indigo straight jeans", "Black ankle boots".
+- Brand: read off a label / hangtag / embroidery / print only if clearly legible. Don't guess from style.
+- Categories: top, tshirt, bottom, dress, coat, shoes, accessory.
+
+Caption — the voice-led one-liner the user reads at the top of the review screen:
+- 1 item: "Looks like a forest-green knit jumper."
+- 2+ items: "Two items — a forest knit and indigo jeans." or "Three: forest knit, dark jeans, white trainers."
+- Always specific. Always observational. Never preachy.
+
+If the photo isn't clearly clothing (blurry, dark, no garments visible): set recognised: false and items: [], explain in caption + warnings.`;
 
 export async function analyzeWardrobePhoto(
   photoUrl: string

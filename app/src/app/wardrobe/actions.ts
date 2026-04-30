@@ -205,12 +205,16 @@ export async function analyzePhotoAction(
   return await analyzeWardrobePhoto(photoUrl);
 }
 
-export async function saveItemAction(formData: FormData) {
+// Returns the saved item's id + name instead of redirecting.
+// Client decides whether to navigate or stay on the add flow (rapid-add).
+export async function saveItemAction(
+  formData: FormData
+): Promise<{ itemId: string; name: string }> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/signin");
+  if (!user) throw new Error("Not signed in");
 
   const itemId = (formData.get("item_id") as string)?.trim();
   const photoUrl = (formData.get("photo_url") as string)?.trim();
@@ -224,7 +228,6 @@ export async function saveItemAction(formData: FormData) {
   if (!name || !category || !primary_colour) {
     throw new Error("Name, category, and colour are required");
   }
-  // Re-validate the photo URL belongs to this user
   if (!photoUrl.includes(`/${BUCKET}/${user.id}/`)) {
     throw new Error("Photo doesn't belong to this account");
   }
@@ -235,7 +238,6 @@ export async function saveItemAction(formData: FormData) {
   const material = ((formData.get("material") as string) || "").trim() || null;
   const notes = ((formData.get("notes") as string) || "").trim() || null;
 
-  // Multi-select arrays come through as repeated form fields
   const seasons = (formData.getAll("seasons") as string[]).filter(Boolean);
   const occasions = (formData.getAll("occasions") as string[]).filter(Boolean);
 
@@ -257,15 +259,12 @@ export async function saveItemAction(formData: FormData) {
 
   if (dbError) {
     console.error("DB insert failed:", dbError);
-    // Best-effort: clean up the orphaned photo
-    const path = photoUrl.split(`${BUCKET}/`)[1];
-    if (path) await supabase.storage.from(BUCKET).remove([path]);
     throw new Error(`Could not save item: ${dbError.message}`);
   }
 
   revalidatePath("/wardrobe");
   revalidatePath("/");
-  redirect(`/wardrobe/${itemId}`);
+  return { itemId, name };
 }
 
 export async function updateItemAction(formData: FormData) {

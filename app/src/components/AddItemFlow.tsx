@@ -2,13 +2,14 @@
 
 import { useState, useTransition } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   analyzePhotoAction,
   saveItemAction,
 } from "@/app/wardrobe/actions";
 import { CATEGORY_LABELS, COLOUR_OPTIONS } from "@/lib/types";
-import type { AutoTagResult } from "@/lib/anthropic";
+import type { AutoTagItem } from "@/lib/anthropic";
 
 const BUCKET = "wardrobe-photos";
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -31,13 +32,15 @@ const OCCASION_OPTIONS = [
 
 type Phase =
   | { kind: "idle" }
-  | { kind: "uploading"; progressLabel: string }
-  | { kind: "analyzing"; photoUrl: string; itemId: string }
+  | { kind: "uploading" }
+  | { kind: "analyzing"; photoUrl: string }
   | {
       kind: "review";
       photoUrl: string;
-      itemId: string;
-      suggestions: AutoTagResult | null;
+      items: AutoTagItem[]; // suggestions, one per detected item; possibly fallback []
+      currentIndex: number;
+      caption: string;
+      warnings: string[];
       manualFallback: boolean;
     }
   | { kind: "error"; message: string };
@@ -45,6 +48,14 @@ type Phase =
 export function AddItemFlow() {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [savingTransition, startSaving] = useTransition();
+  const [sessionAdded, setSessionAdded] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  const [justAddedFlash, setJustAddedFlash] = useState<string | null>(null);
+
+  function reset() {
+    setPhase({ kind: "idle" });
+  }
 
   async function handleFile(file: File) {
     if (file.size > MAX_FILE_BYTES) {
@@ -55,7 +66,7 @@ export function AddItemFlow() {
       return;
     }
 
-    setPhase({ kind: "uploading", progressLabel: "Uploading the photo…" });
+    setPhase({ kind: "uploading" });
 
     const supabase = createClient();
     const {
@@ -69,12 +80,14 @@ export function AddItemFlow() {
       return;
     }
 
-    const itemId = crypto.randomUUID();
+    // Use a UUID for the storage path; this isn't tied to any one item id —
+    // multiple items detected in this photo will all reference this URL.
+    const photoFileId = crypto.randomUUID();
     const ext =
       file.name.split(".").pop()?.toLowerCase() ||
       file.type.split("/")[1] ||
       "jpg";
-    const path = `${user.id}/${itemId}.${ext}`;
+    const path = `${user.id}/${photoFileId}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
@@ -92,24 +105,29 @@ export function AddItemFlow() {
       data: { publicUrl },
     } = supabase.storage.from(BUCKET).getPublicUrl(path);
 
-    setPhase({ kind: "analyzing", photoUrl: publicUrl, itemId });
+    setPhase({ kind: "analyzing", photoUrl: publicUrl });
 
     try {
-      const suggestions = await analyzePhotoAction(publicUrl);
+      const result = await analyzePhotoAction(publicUrl);
+      const items = result.recognised && result.items.length > 0 ? result.items : [];
       setPhase({
         kind: "review",
         photoUrl: publicUrl,
-        itemId,
-        suggestions,
-        manualFallback: false,
+        items: items.length > 0 ? items : [emptyItem()],
+        currentIndex: 0,
+        caption: result.caption,
+        warnings: result.warnings ?? [],
+        manualFallback: items.length === 0,
       });
     } catch (err) {
       console.error("Auto-tag failed:", err);
       setPhase({
         kind: "review",
         photoUrl: publicUrl,
-        itemId,
-        suggestions: null,
+        items: [emptyItem()],
+        currentIndex: 0,
+        caption: "We couldn't read that one — fill in the basics?",
+        warnings: [],
         manualFallback: true,
       });
     }
@@ -118,35 +136,96 @@ export function AddItemFlow() {
   function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (file) handleFile(file);
+    // Reset the input so picking the same file again triggers change
+    e.target.value = "";
   }
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (phase.kind !== "review") return;
     const formData = new FormData(e.currentTarget);
+
     startSaving(async () => {
       try {
-        await saveItemAction(formData);
+        const result = await saveItemAction(formData);
+        const newAdded = [
+          ...sessionAdded,
+          { id: result.itemId, name: result.name },
+        ];
+        setSessionAdded(newAdded);
+        setJustAddedFlash(result.name);
+
+        if (phase.kind !== "review") return;
+        // Advance through detected items, or back to idle if last
+        if (phase.currentIndex < phase.items.length - 1) {
+          setPhase({
+            ...phase,
+            currentIndex: phase.currentIndex + 1,
+          });
+        } else {
+          setPhase({ kind: "idle" });
+        }
+
+        // Auto-clear flash after a few seconds
+        setTimeout(() => setJustAddedFlash(null), 4000);
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Couldn't save — try again?";
-        if (message.includes("NEXT_REDIRECT")) return;
         setPhase({ kind: "error", message });
       }
     });
   }
 
+  function handleSkipItem() {
+    if (phase.kind !== "review") return;
+    if (phase.currentIndex < phase.items.length - 1) {
+      setPhase({ ...phase, currentIndex: phase.currentIndex + 1 });
+    } else {
+      reset();
+    }
+  }
+
   // === RENDER ===
+
+  // Persistent session ribbon (always shown when items have been added)
+  const sessionRibbon = sessionAdded.length > 0 && (
+    <div className="mb-6 flex items-center justify-between gap-4 rounded-2xl bg-forest-50 px-5 py-3">
+      <p className="text-sm text-forest-700">
+        <span className="font-medium">{sessionAdded.length}</span> added in this
+        session
+      </p>
+      <Link
+        href="/wardrobe"
+        className="text-xs uppercase tracking-wider text-forest-700 hover:text-forest-600"
+      >
+        Done — view all →
+      </Link>
+    </div>
+  );
 
   if (phase.kind === "idle") {
     return (
-      <div className="space-y-6">
+      <div>
+        {sessionRibbon}
+
+        {justAddedFlash && (
+          <div className="mb-6 rounded-2xl border border-sage-100 bg-sage-100/50 px-5 py-4 text-center">
+            <p className="font-heading text-lg text-charcoal">
+              Added {justAddedFlash}.
+            </p>
+            <p className="mt-1 text-sm text-sage-600">
+              Keep going — pick another photo below.
+            </p>
+          </div>
+        )}
+
         <div className="rounded-3xl border-2 border-dashed border-linen-300 bg-linen-50 p-10 text-center">
           <p className="font-heading text-2xl font-medium text-charcoal">
-            Snap it in.
+            {sessionAdded.length === 0 ? "Snap it in." : "Got another?"}
           </p>
           <p className="mt-3 text-base text-charcoal-soft">
-            Take a photo of one piece. We'll figure out the rest — type, colour,
-            season — and you confirm.
+            One photo can be one item or many — a flat lay, a hanger shot, or a
+            selfie. We'll figure out what's in it.
           </p>
 
           <label className="mt-8 inline-block cursor-pointer rounded-full bg-forest-500 px-6 py-3 text-base font-medium text-linen-100 transition-colors hover:bg-forest-600">
@@ -171,283 +250,317 @@ export function AddItemFlow() {
   if (phase.kind === "uploading" || phase.kind === "analyzing") {
     const label =
       phase.kind === "uploading"
-        ? phase.progressLabel
+        ? "Uploading the photo…"
         : "Looking at the photo…";
     return (
-      <div className="rounded-3xl border border-linen-200 bg-linen-50 p-12 text-center">
-        <div className="mx-auto h-12 w-12 animate-pulse rounded-full bg-forest-100" />
-        <p className="mt-6 font-heading text-xl text-charcoal">{label}</p>
-        <p className="mt-2 text-sm text-charcoal-muted">
-          {phase.kind === "analyzing" ? "About 5 seconds." : "Won't be long."}
-        </p>
+      <div>
+        {sessionRibbon}
+        <div className="rounded-3xl border border-linen-200 bg-linen-50 p-12 text-center">
+          <div className="mx-auto h-12 w-12 animate-pulse rounded-full bg-forest-100" />
+          <p className="mt-6 font-heading text-xl text-charcoal">{label}</p>
+          <p className="mt-2 text-sm text-charcoal-muted">
+            {phase.kind === "analyzing"
+              ? "Spotting items, matching colours…"
+              : "Won't be long."}
+          </p>
+        </div>
       </div>
     );
   }
 
   if (phase.kind === "error") {
     return (
-      <div className="rounded-2xl border border-error/30 bg-error/5 p-6">
-        <p className="text-base text-error">{phase.message}</p>
-        <button
-          onClick={() => setPhase({ kind: "idle" })}
-          className="mt-4 rounded-full bg-forest-500 px-6 py-2 text-sm font-medium text-linen-100 hover:bg-forest-600"
-        >
-          Try again
-        </button>
+      <div>
+        {sessionRibbon}
+        <div className="rounded-2xl border border-error/30 bg-error/5 p-6">
+          <p className="text-base text-error">{phase.message}</p>
+          <button
+            onClick={reset}
+            className="mt-4 rounded-full bg-forest-500 px-6 py-2 text-sm font-medium text-linen-100 hover:bg-forest-600"
+          >
+            Try again
+          </button>
+        </div>
       </div>
     );
   }
 
   // phase.kind === "review"
-  const s = phase.suggestions;
-  const caption =
-    s && s.recognised
-      ? s.caption
-      : phase.manualFallback
-      ? "We couldn't read that one — fill in the basics?"
-      : s?.caption ||
-        "Couldn't identify it clearly. Fill in what you can.";
+  const total = phase.items.length;
+  const isMulti = total > 1;
+  const currentItem = phase.items[phase.currentIndex];
+  const itemId = useStableItemId(phase.photoUrl, phase.currentIndex);
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <input type="hidden" name="item_id" value={phase.itemId} />
-      <input type="hidden" name="photo_url" value={phase.photoUrl} />
+    <div>
+      {sessionRibbon}
 
-      {/* Photo + AI caption */}
-      <div className="space-y-4">
-        <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-linen-200">
-          <Image
-            src={phase.photoUrl}
-            alt="Your item"
-            fill
-            sizes="(max-width: 640px) 100vw, 600px"
-            className="object-cover"
-          />
-        </div>
+      <form onSubmit={handleSubmit} className="space-y-6" key={itemId}>
+        <input type="hidden" name="item_id" value={itemId} />
+        <input type="hidden" name="photo_url" value={phase.photoUrl} />
 
-        <div className="rounded-2xl border border-forest-100 bg-forest-50 px-5 py-4">
-          <p className="font-heading text-lg text-charcoal sm:text-xl">
-            {caption}
-          </p>
-          <p className="mt-2 text-xs text-charcoal-muted">
-            Edit anything we got wrong.
-          </p>
-        </div>
-
-        {s?.warnings && s.warnings.length > 0 && (
-          <div className="rounded-xl border border-clay-100 bg-clay-100/40 px-4 py-3 text-sm text-charcoal-soft">
-            {s.warnings.map((w, i) => (
-              <p key={i}>{w}</p>
-            ))}
+        {/* Photo + caption (only shown for first item or as anchor) */}
+        <div className="space-y-4">
+          <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-linen-200">
+            <Image
+              src={phase.photoUrl}
+              alt="Your item"
+              fill
+              sizes="(max-width: 640px) 100vw, 600px"
+              className="object-cover"
+            />
+            {isMulti && (
+              <div className="absolute right-3 top-3 rounded-full bg-charcoal/80 px-3 py-1 text-xs uppercase tracking-wider text-linen-100">
+                Item {phase.currentIndex + 1} of {total}
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Form fields */}
-      <div className="space-y-5 pt-2">
-        {/* Name */}
-        <div>
-          <label
-            htmlFor="name"
-            className="block text-sm font-medium text-charcoal"
-          >
-            Name <span className="text-error">*</span>
-          </label>
-          <input
-            id="name"
-            name="name"
-            type="text"
-            required
-            maxLength={120}
-            defaultValue={s?.suggested_name ?? ""}
-            placeholder="Forest-green knit jumper"
-            className="mt-2 block w-full rounded-xl border border-linen-300 bg-linen-50 px-4 py-3 text-base text-charcoal placeholder:text-charcoal-placeholder focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
-          />
-        </div>
+          <div className="rounded-2xl border border-forest-100 bg-forest-50 px-5 py-4">
+            <p className="font-heading text-lg text-charcoal sm:text-xl">
+              {phase.caption}
+            </p>
+            <p className="mt-2 text-xs text-charcoal-muted">
+              {phase.manualFallback
+                ? "Fill in what you can — the AI couldn't read this clearly."
+                : isMulti
+                ? "Edit each one before saving — or skip ones you don't want to add."
+                : "Edit anything we got wrong."}
+            </p>
+          </div>
 
-        {/* Category + Colour */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label
-              htmlFor="category"
-              className="block text-sm font-medium text-charcoal"
-            >
-              Category <span className="text-error">*</span>
-            </label>
-            <select
-              id="category"
-              name="category"
-              required
-              defaultValue={s?.category ?? ""}
-              className="mt-2 block w-full rounded-xl border border-linen-300 bg-linen-50 px-4 py-3 text-base text-charcoal focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
-            >
-              <option value="" disabled>
-                Pick one
-              </option>
-              {(
-                Object.keys(CATEGORY_LABELS) as Array<keyof typeof CATEGORY_LABELS>
-              ).map((k) => (
-                <option key={k} value={k}>
-                  {CATEGORY_LABELS[k]}
-                </option>
+          {phase.warnings.length > 0 && (
+            <div className="rounded-xl border border-clay-100 bg-clay-100/40 px-4 py-3 text-sm text-charcoal-soft">
+              {phase.warnings.map((w, i) => (
+                <p key={i}>{w}</p>
               ))}
-            </select>
-          </div>
-
-          <div>
-            <label
-              htmlFor="primary_colour"
-              className="block text-sm font-medium text-charcoal"
-            >
-              Colour <span className="text-error">*</span>
-            </label>
-            <select
-              id="primary_colour"
-              name="primary_colour"
-              required
-              defaultValue={s?.primary_colour ?? ""}
-              className="mt-2 block w-full rounded-xl border border-linen-300 bg-linen-50 px-4 py-3 text-base text-charcoal focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
-            >
-              <option value="" disabled>
-                Pick one
-              </option>
-              {COLOUR_OPTIONS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
+            </div>
+          )}
         </div>
 
-        {/* Brand + subcategory */}
-        <div className="grid gap-4 sm:grid-cols-2">
+        {/* Form fields for current item */}
+        <div className="space-y-5 pt-2">
           <div>
             <label
-              htmlFor="brand"
+              htmlFor="name"
               className="block text-sm font-medium text-charcoal"
             >
-              Brand <span className="text-charcoal-muted">(optional)</span>
+              Name <span className="text-error">*</span>
             </label>
             <input
-              id="brand"
-              name="brand"
+              id="name"
+              name="name"
               type="text"
+              required
               maxLength={120}
-              defaultValue={s?.brand ?? ""}
-              placeholder="Cos"
+              defaultValue={currentItem?.suggested_name ?? ""}
+              placeholder="Forest-green knit jumper"
               className="mt-2 block w-full rounded-xl border border-linen-300 bg-linen-50 px-4 py-3 text-base text-charcoal placeholder:text-charcoal-placeholder focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
             />
           </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor="category"
+                className="block text-sm font-medium text-charcoal"
+              >
+                Category <span className="text-error">*</span>
+              </label>
+              <select
+                id="category"
+                name="category"
+                required
+                defaultValue={currentItem?.category ?? ""}
+                className="mt-2 block w-full rounded-xl border border-linen-300 bg-linen-50 px-4 py-3 text-base text-charcoal focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
+              >
+                <option value="" disabled>
+                  Pick one
+                </option>
+                {(
+                  Object.keys(CATEGORY_LABELS) as Array<keyof typeof CATEGORY_LABELS>
+                ).map((k) => (
+                  <option key={k} value={k}>
+                    {CATEGORY_LABELS[k]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="primary_colour"
+                className="block text-sm font-medium text-charcoal"
+              >
+                Colour <span className="text-error">*</span>
+              </label>
+              <select
+                id="primary_colour"
+                name="primary_colour"
+                required
+                defaultValue={currentItem?.primary_colour ?? ""}
+                className="mt-2 block w-full rounded-xl border border-linen-300 bg-linen-50 px-4 py-3 text-base text-charcoal focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
+              >
+                <option value="" disabled>
+                  Pick one
+                </option>
+                {COLOUR_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor="brand"
+                className="block text-sm font-medium text-charcoal"
+              >
+                Brand <span className="text-charcoal-muted">(optional)</span>
+              </label>
+              <input
+                id="brand"
+                name="brand"
+                type="text"
+                maxLength={120}
+                defaultValue={currentItem?.brand ?? ""}
+                placeholder="Cos"
+                className="mt-2 block w-full rounded-xl border border-linen-300 bg-linen-50 px-4 py-3 text-base text-charcoal placeholder:text-charcoal-placeholder focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="subcategory"
+                className="block text-sm font-medium text-charcoal"
+              >
+                Style <span className="text-charcoal-muted">(optional)</span>
+              </label>
+              <input
+                id="subcategory"
+                name="subcategory"
+                type="text"
+                maxLength={80}
+                defaultValue={currentItem?.subcategory ?? ""}
+                placeholder="knit jumper"
+                className="mt-2 block w-full rounded-xl border border-linen-300 bg-linen-50 px-4 py-3 text-base text-charcoal placeholder:text-charcoal-placeholder focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
+              />
+            </div>
+          </div>
+
           <div>
             <label
-              htmlFor="subcategory"
+              htmlFor="material"
               className="block text-sm font-medium text-charcoal"
             >
-              Style <span className="text-charcoal-muted">(optional)</span>
+              Material <span className="text-charcoal-muted">(optional)</span>
             </label>
             <input
-              id="subcategory"
-              name="subcategory"
+              id="material"
+              name="material"
               type="text"
               maxLength={80}
-              defaultValue={s?.subcategory ?? ""}
-              placeholder="knit jumper"
+              defaultValue={currentItem?.material ?? ""}
+              placeholder="merino wool"
+              className="mt-2 block w-full rounded-xl border border-linen-300 bg-linen-50 px-4 py-3 text-base text-charcoal placeholder:text-charcoal-placeholder focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
+            />
+          </div>
+
+          <fieldset>
+            <legend className="text-sm font-medium text-charcoal">
+              Seasons
+            </legend>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {SEASON_OPTIONS.map((opt) => (
+                <SuggestionChip
+                  key={opt.value}
+                  name="seasons"
+                  value={opt.value}
+                  label={opt.label}
+                  defaultChecked={
+                    currentItem?.seasons?.includes(opt.value as never) ?? false
+                  }
+                />
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend className="text-sm font-medium text-charcoal">
+              Occasions
+            </legend>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {OCCASION_OPTIONS.map((opt) => (
+                <SuggestionChip
+                  key={opt.value}
+                  name="occasions"
+                  value={opt.value}
+                  label={opt.label}
+                  defaultChecked={
+                    currentItem?.occasions?.includes(opt.value as never) ?? false
+                  }
+                />
+              ))}
+            </div>
+          </fieldset>
+
+          <div>
+            <label
+              htmlFor="notes"
+              className="block text-sm font-medium text-charcoal"
+            >
+              Notes <span className="text-charcoal-muted">(optional)</span>
+            </label>
+            <textarea
+              id="notes"
+              name="notes"
+              rows={2}
+              maxLength={500}
+              placeholder="The colour everyone compliments"
               className="mt-2 block w-full rounded-xl border border-linen-300 bg-linen-50 px-4 py-3 text-base text-charcoal placeholder:text-charcoal-placeholder focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
             />
           </div>
         </div>
 
-        {/* Material */}
-        <div>
-          <label
-            htmlFor="material"
-            className="block text-sm font-medium text-charcoal"
+        <div className="flex flex-col gap-3 pt-4 sm:flex-row">
+          <button
+            type="submit"
+            disabled={savingTransition}
+            className="flex-1 rounded-full bg-forest-500 px-6 py-4 text-base font-medium text-linen-100 transition-colors hover:bg-forest-600 disabled:opacity-60"
           >
-            Material <span className="text-charcoal-muted">(optional)</span>
-          </label>
-          <input
-            id="material"
-            name="material"
-            type="text"
-            maxLength={80}
-            defaultValue={s?.material ?? ""}
-            placeholder="merino wool"
-            className="mt-2 block w-full rounded-xl border border-linen-300 bg-linen-50 px-4 py-3 text-base text-charcoal placeholder:text-charcoal-placeholder focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
-          />
-        </div>
+            {savingTransition
+              ? "Saving…"
+              : isMulti && phase.currentIndex < total - 1
+              ? `Save & next (${phase.currentIndex + 1}/${total})`
+              : isMulti
+              ? `Save final item (${total}/${total})`
+              : "Add to wardrobe"}
+          </button>
 
-        {/* Seasons (chips) */}
-        <fieldset>
-          <legend className="text-sm font-medium text-charcoal">Seasons</legend>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {SEASON_OPTIONS.map((opt) => (
-              <SuggestionChip
-                key={opt.value}
-                name="seasons"
-                value={opt.value}
-                label={opt.label}
-                defaultChecked={s?.seasons.includes(opt.value as never)}
-              />
-            ))}
-          </div>
-        </fieldset>
+          {isMulti && (
+            <button
+              type="button"
+              onClick={handleSkipItem}
+              disabled={savingTransition}
+              className="rounded-full border border-charcoal/15 px-6 py-4 text-base text-charcoal-soft transition-colors hover:border-clay-500 hover:text-clay-600 sm:flex-shrink-0"
+            >
+              Skip this one
+            </button>
+          )}
 
-        {/* Occasions (chips) */}
-        <fieldset>
-          <legend className="text-sm font-medium text-charcoal">
-            Occasions
-          </legend>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {OCCASION_OPTIONS.map((opt) => (
-              <SuggestionChip
-                key={opt.value}
-                name="occasions"
-                value={opt.value}
-                label={opt.label}
-                defaultChecked={s?.occasions.includes(opt.value as never)}
-              />
-            ))}
-          </div>
-        </fieldset>
-
-        {/* Notes */}
-        <div>
-          <label
-            htmlFor="notes"
-            className="block text-sm font-medium text-charcoal"
+          <button
+            type="button"
+            onClick={reset}
+            disabled={savingTransition}
+            className="rounded-full border border-charcoal/15 px-6 py-4 text-base text-charcoal-soft transition-colors hover:border-error hover:text-error sm:flex-shrink-0"
           >
-            Notes <span className="text-charcoal-muted">(optional)</span>
-          </label>
-          <textarea
-            id="notes"
-            name="notes"
-            rows={2}
-            maxLength={500}
-            placeholder="The colour everyone compliments"
-            className="mt-2 block w-full rounded-xl border border-linen-300 bg-linen-50 px-4 py-3 text-base text-charcoal placeholder:text-charcoal-placeholder focus:border-forest-500 focus:outline-none focus:ring-2 focus:ring-forest-500/20"
-          />
+            Cancel
+          </button>
         </div>
-      </div>
-
-      <div className="flex flex-col gap-3 pt-4 sm:flex-row">
-        <button
-          type="submit"
-          disabled={savingTransition}
-          className="flex-1 rounded-full bg-forest-500 px-6 py-4 text-base font-medium text-linen-100 transition-colors hover:bg-forest-600 disabled:opacity-60"
-        >
-          {savingTransition ? "Saving…" : "Add to wardrobe"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setPhase({ kind: "idle" })}
-          disabled={savingTransition}
-          className="rounded-full border border-charcoal/15 px-6 py-4 text-base text-charcoal-soft transition-colors hover:border-error hover:text-error sm:flex-shrink-0"
-        >
-          Start over
-        </button>
-      </div>
-    </form>
+      </form>
+    </div>
   );
 }
 
@@ -476,4 +589,47 @@ function SuggestionChip({
       </span>
     </label>
   );
+}
+
+// Generates a stable item-id per (photo, index) pair so re-renders during
+// review don't change the hidden input. Uses a deterministic string seed.
+function useStableItemId(photoUrl: string, index: number): string {
+  // Pull last segment of the URL (UUID + ext) and hash with index for uniqueness.
+  // crypto.randomUUID() would change every render — that's wrong here.
+  const seed = `${photoUrl}|${index}`;
+  // Convert seed → UUID-like string deterministically.
+  return uuidFromString(seed);
+}
+
+function uuidFromString(seed: string): string {
+  // Simple deterministic 32-hex from FNV-1a-ish hashing, formatted as UUID v4-like.
+  // Not cryptographically secure — fine for client-side row IDs (validated server-side).
+  let h1 = 0x811c9dc5;
+  let h2 = 0x1b873593;
+  for (let i = 0; i < seed.length; i++) {
+    const c = seed.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ c, 0x9e3779b1) >>> 0;
+  }
+  const hex = (n: number, len: number) =>
+    n.toString(16).padStart(len, "0").slice(0, len);
+  // Build a v4-shaped UUID. 4xxx for version, 8/9/a/b for variant.
+  return `${hex(h1, 8)}-${hex(h2 >>> 16, 4)}-4${hex(h2 & 0xfff, 3)}-8${hex(
+    h1 >>> 16,
+    3
+  )}-${hex(h1 & 0xffff, 4)}${hex(h2, 8)}`;
+}
+
+function emptyItem(): AutoTagItem {
+  return {
+    suggested_name: null,
+    category: null,
+    subcategory: null,
+    primary_colour: null,
+    secondary_colour: null,
+    brand: null,
+    material: null,
+    seasons: [],
+    occasions: [],
+  };
 }
