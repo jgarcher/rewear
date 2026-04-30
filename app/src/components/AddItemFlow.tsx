@@ -233,14 +233,13 @@ export function AddItemFlow() {
             <input
               type="file"
               accept="image/*"
-              capture="environment"
               onChange={handleFileInput}
               className="sr-only"
             />
           </label>
 
           <p className="mt-4 text-xs text-charcoal-muted">
-            Bright, neutral background works best. JPG or PNG, up to 10 MB.
+            Take one now, or pick from your library. JPG or PNG, up to 10 MB.
           </p>
         </div>
       </div>
