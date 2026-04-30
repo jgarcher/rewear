@@ -29,9 +29,9 @@ function normaliseCondition(main: string, windSpeed: number): string {
 
 export async function getWeather(): Promise<Weather> {
   const apiKey = process.env.OPENWEATHER_API_KEY;
-  const lat = process.env.DEFAULT_LOCATION_LAT ?? "51.5074";
-  const lng = process.env.DEFAULT_LOCATION_LNG ?? "-0.1278";
-  const cityName = process.env.DEFAULT_LOCATION_NAME ?? "London";
+  const lat = process.env.DEFAULT_LOCATION_LAT ?? "52.3007";
+  const lng = process.env.DEFAULT_LOCATION_LNG ?? "4.8636";
+  const cityName = process.env.DEFAULT_LOCATION_NAME ?? "Amstelveen";
 
   if (!apiKey) {
     // Fallback for local dev without a key — typical UK conditions
