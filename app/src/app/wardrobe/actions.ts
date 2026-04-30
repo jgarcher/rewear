@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { analyzeWardrobePhoto, type AutoTagResult } from "@/lib/anthropic";
 import type { ItemCategory, Season, Occasion } from "@/lib/types";
 
 const BUCKET = "wardrobe-photos";
@@ -177,4 +178,92 @@ export async function deleteItem(itemId: string) {
   revalidatePath("/wardrobe");
   revalidatePath("/");
   redirect("/wardrobe");
+}
+
+// === Auto-tag flow (Session 10) ===
+//
+// Two-step add: client uploads photo to storage → calls analyzePhotoAction
+// to run Claude vision → user reviews pre-filled form → submits saveItemAction.
+
+export async function analyzePhotoAction(
+  photoUrl: string
+): Promise<AutoTagResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in");
+
+  // Validate the URL is from our bucket and from this user's folder.
+  if (
+    !photoUrl.includes(`/${BUCKET}/${user.id}/`) ||
+    !photoUrl.startsWith("https://")
+  ) {
+    throw new Error("Invalid photo URL");
+  }
+
+  return await analyzeWardrobePhoto(photoUrl);
+}
+
+export async function saveItemAction(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/signin");
+
+  const itemId = (formData.get("item_id") as string)?.trim();
+  const photoUrl = (formData.get("photo_url") as string)?.trim();
+  const name = (formData.get("name") as string)?.trim();
+  const category = formData.get("category") as ItemCategory;
+  const primary_colour = (formData.get("primary_colour") as string)?.trim();
+
+  if (!itemId || !photoUrl) {
+    throw new Error("Missing photo. Re-upload and try again.");
+  }
+  if (!name || !category || !primary_colour) {
+    throw new Error("Name, category, and colour are required");
+  }
+  // Re-validate the photo URL belongs to this user
+  if (!photoUrl.includes(`/${BUCKET}/${user.id}/`)) {
+    throw new Error("Photo doesn't belong to this account");
+  }
+
+  const subcategory =
+    ((formData.get("subcategory") as string) || "").trim() || null;
+  const brand = ((formData.get("brand") as string) || "").trim() || null;
+  const material = ((formData.get("material") as string) || "").trim() || null;
+  const notes = ((formData.get("notes") as string) || "").trim() || null;
+
+  // Multi-select arrays come through as repeated form fields
+  const seasons = (formData.getAll("seasons") as string[]).filter(Boolean);
+  const occasions = (formData.getAll("occasions") as string[]).filter(Boolean);
+
+  const { error: dbError } = await supabase.from("wardrobe_items").insert({
+    id: itemId,
+    user_id: user.id,
+    name,
+    category,
+    subcategory,
+    primary_colour,
+    brand,
+    material,
+    notes,
+    seasons: seasons.length > 0 ? seasons : ["all"],
+    occasions: occasions.length > 0 ? occasions : ["casual"],
+    photo_url: photoUrl,
+    status: "active",
+  });
+
+  if (dbError) {
+    console.error("DB insert failed:", dbError);
+    // Best-effort: clean up the orphaned photo
+    const path = photoUrl.split(`${BUCKET}/`)[1];
+    if (path) await supabase.storage.from(BUCKET).remove([path]);
+    throw new Error(`Could not save item: ${dbError.message}`);
+  }
+
+  revalidatePath("/wardrobe");
+  revalidatePath("/");
+  redirect(`/wardrobe/${itemId}`);
 }
