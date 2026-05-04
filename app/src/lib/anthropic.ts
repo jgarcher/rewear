@@ -191,6 +191,144 @@ Build me an outfit.`,
   return response.parsed_output;
 }
 
+// === Trip Planner — multi-day outfit plan ===
+
+export const TripPlanSchema = z.object({
+  trip_name: z
+    .string()
+    .nullable()
+    .describe(
+      "Short suggested trip name in ReWear voice. Optional. e.g. 'Greek week', 'Wedding weekend'"
+    ),
+  days: z.array(
+    z.object({
+      day_index: z.number().describe("0-based index into the requested dates"),
+      outfit: z
+        .object({
+          items: z
+            .array(
+              z.object({
+                item_id: z.string(),
+                role: OutfitItemRoleSchema,
+              })
+            )
+            .min(2)
+            .max(6),
+          reasoning: z
+            .string()
+            .describe(
+              "1 sentence in ReWear voice. Reference one specific item by name."
+            ),
+        })
+        .nullable(),
+      fallback_message: z
+        .string()
+        .nullable()
+        .describe("Set when outfit is null and explain why."),
+    })
+  ),
+  notes: z
+    .string()
+    .nullable()
+    .describe("Optional one-line trip-level note in voice. e.g. 'Leaning into linen since it's hot'"),
+});
+
+export type TripPlanResult = z.infer<typeof TripPlanSchema>;
+
+const TRIP_SYSTEM_PROMPT = `You are the AI behind ReWear, planning a multi-day trip wardrobe from the user's closet.
+
+Speak as ReWear: quietly confident, observational older-sister voice. Short sentences. UK English. No emoji, no preachy sustainability talk.
+
+Your job: given a date range, a free-text trip context (e.g. "Greece, casual, beach + dinners"), and the user's wardrobe, build one outfit per day.
+
+Rules:
+- One coherent outfit per day, indexed 0..N-1
+- Each outfit follows the same composition rules as single-outfit generation: {top + bottom + shoes} OR {dress + shoes}, optional coat / accessory only when warranted
+- Role MUST match item category. A skirt or jeans is role "bottom", never "accessory"
+- Vary across days: don't repeat the SAME hero piece twice unless the trip spans 5+ days. Even then, alternate
+- Match the implied weather and formality of the trip context. "Greece in summer" = warm, no coats. "Ski weekend" = layers, coat every day. Don't overthink — use common sense
+- Respect favourite_pairs (user-curated), liked_combos (lean toward), disliked_combos (avoid those exact item combos and the patterns they suggest)
+- NEVER pick items in the recent_wears exclusion list
+- Some items have borrowable_from set — use sparingly, max one borrowable item per day, mention the friend's name in reasoning
+
+For each day, write a 1-sentence reasoning in voice — name one item.
+
+If you can't compose an outfit for a particular day (wardrobe too thin, occasion not represented, etc.), set that day's outfit to null and write a one-sentence fallback_message in voice.
+
+Optionally suggest a short trip_name and a one-line trip-level note.`;
+
+type TripPlanInput = {
+  wardrobe: WardrobeItem[];
+  recentWearIds: string[];
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  numDays: number;
+  tripContext: string; // free text
+  favouritePairs?: Array<{ name: string | null; itemIds: string[] }>;
+  likedCombos?: string[][];
+  dislikedCombos?: string[][];
+};
+
+export async function generateTripPlan(
+  input: TripPlanInput
+): Promise<TripPlanResult> {
+  const wardrobeJson = JSON.stringify(input.wardrobe, null, 0);
+
+  const response = await anthropic().messages.parse({
+    model: "claude-sonnet-4-6",
+    max_tokens: 4096,
+    system: TRIP_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: `Wardrobe (item_id and metadata for every active piece):\n${wardrobeJson}`,
+            cache_control: { type: "ephemeral" },
+          },
+          {
+            type: "text",
+            text: `Trip:
+- Dates: ${input.startDate} → ${input.endDate} (${input.numDays} days)
+- Context: ${input.tripContext || "(no description)"}
+- Recent wears (last 14 days, exclude): ${
+              input.recentWearIds.length > 0
+                ? input.recentWearIds.join(", ")
+                : "none"
+            }
+- Favourite pairs: ${
+              input.favouritePairs && input.favouritePairs.length > 0
+                ? JSON.stringify(input.favouritePairs)
+                : "none"
+            }
+- Liked combos: ${
+              input.likedCombos && input.likedCombos.length > 0
+                ? JSON.stringify(input.likedCombos)
+                : "none"
+            }
+- Disliked combos: ${
+              input.dislikedCombos && input.dislikedCombos.length > 0
+                ? JSON.stringify(input.dislikedCombos)
+                : "none"
+            }
+
+Plan an outfit for each day. Return ${input.numDays} day entries indexed 0..${
+              input.numDays - 1
+            }.`,
+          },
+        ],
+      },
+    ],
+    output_config: { format: zodOutputFormat(TripPlanSchema) },
+  });
+
+  if (!response.parsed_output) {
+    throw new Error("AI returned an unparseable response");
+  }
+  return response.parsed_output;
+}
+
 // === Auto-tag (Claude vision) — ADR 014 Feature 2 ===
 
 export const AutoTagItemSchema = z.object({

@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { TripPlannerForm } from "@/components/TripPlannerForm";
 import type { WardrobeItem } from "@/lib/types";
 
 export const metadata = { title: "Schedule — ReWear" };
@@ -222,6 +223,32 @@ export default async function SchedulePage({
               </button>
             </div>
           </form>
+        )}
+
+        {/* AI trip planner (range view only) */}
+        {isRange && (
+          <section className="mt-8 overflow-hidden rounded-3xl bg-gradient-to-br from-forest-500 to-forest-700 p-5 text-linen-100 sm:p-7">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-xs font-medium uppercase tracking-[0.25em] text-linen-100/70">
+                AI trip planner
+              </p>
+            </div>
+            <h2 className="mt-2 font-heading text-2xl font-medium sm:text-3xl">
+              Let us plan it for you.
+            </h2>
+            <p className="mt-2 text-sm text-linen-100/85 sm:text-base">
+              Describe the trip and we&apos;ll build an outfit for each day.
+              You can edit any of them after.
+            </p>
+            <div className="mt-5 rounded-2xl bg-linen-50 p-4 text-charcoal sm:p-5">
+              <TripPlannerForm
+                from={startDate}
+                to={endDate}
+                numDays={dateList.length}
+                numUnplanned={dateList.filter((d) => !outfitsByDate.has(d)).length}
+              />
+            </div>
+          </section>
         )}
 
         {/* Packing list (range view only) */}
