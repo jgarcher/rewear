@@ -24,6 +24,49 @@ const OCCASIONS: OccasionValue[] = [
   "just-home",
 ];
 
+// Threshold for the magic button: enough variety for the AI to do its thing.
+const MAGIC_MIN_ITEMS = 10;
+
+// Pick a sensible occasion based on time of day. Day = casual, evening = going-out, weekend = casual.
+function defaultMagicOccasion(): OccasionValue {
+  const d = new Date();
+  const day = d.getDay(); // 0=Sun, 6=Sat
+  const hour = d.getHours();
+  if (day === 0 || day === 6) return "errands";
+  if (hour >= 18) return "going-out";
+  if (hour < 9) return "school";
+  return "errands";
+}
+
+// Magic button: tap once, get a surprise outfit. Redirects to either the
+// onboarding nudge (if wardrobe is too thin) or the generated result page.
+export async function magicOutfitAction() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/signin");
+
+  const { count } = await supabase
+    .from("wardrobe_items")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("status", "active");
+
+  if ((count ?? 0) < MAGIC_MIN_ITEMS) {
+    redirect("/wardrobe/add?magic=needs-items");
+  }
+
+  const outfitId = await runGenerationAndSave({
+    userId: user.id,
+    occasion: defaultMagicOccasion(),
+    vibe: "surprise",
+    additionalExclusions: [],
+  });
+
+  redirect(`/outfit/result/${outfitId}`);
+}
+
 export async function generateOutfitAction(formData: FormData) {
   const supabase = await createClient();
   const {
