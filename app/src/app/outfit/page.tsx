@@ -7,10 +7,15 @@ export const metadata = { title: "Outfit — ReWear" };
 
 export default async function OutfitPage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
 
   const { count: itemCount } = await supabase
     .from("wardrobe_items")
     .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
     .eq("status", "active");
 
   if ((itemCount ?? 0) < 3) {

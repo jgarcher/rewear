@@ -30,11 +30,16 @@ export default async function EditItemPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
 
   const { data: item, error } = await supabase
     .from("wardrobe_items")
     .select("*")
     .eq("id", id)
+    .eq("user_id", user.id)
     .single();
 
   if (error || !item) notFound();

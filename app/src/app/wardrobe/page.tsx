@@ -15,10 +15,15 @@ export default async function WardrobePage({
 }) {
   const { category } = await searchParams;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
 
   const { data: items } = await supabase
     .from("wardrobe_items")
     .select("*")
+    .eq("user_id", user.id)
     .eq("status", "active")
     .order("created_at", { ascending: false });
 

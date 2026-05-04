@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export function AuthForm() {
+type Props = { next?: string };
+
+export function AuthForm({ next }: Props = {}) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "sent" | "error">(
     "idle"
@@ -22,10 +24,15 @@ export function AuthForm() {
     setMessage("");
 
     const supabase = createClient();
+    const callbackUrl = new URL(
+      "/auth/callback",
+      window.location.origin
+    );
+    if (next) callbackUrl.searchParams.set("next", next);
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: callbackUrl.toString(),
       },
     });
 

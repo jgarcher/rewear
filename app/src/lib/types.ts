@@ -24,6 +24,8 @@ export type AcquiredSource =
 
 export type ItemStatus = "active" | "listed" | "donated" | "upcycled" | "retired";
 
+export type ShareState = "private" | "borrowable" | "up_for_grabs";
+
 export type Season = "winter" | "spring" | "summer" | "autumn" | "all";
 export type Occasion = "casual" | "work" | "evening" | "athletic" | "special";
 
@@ -46,8 +48,47 @@ export type WardrobeItem = {
   photo_url: string | null;
   notes: string | null;
   status: ItemStatus;
+  share_state: ShareState;
+  lent_to_user_id: string | null;
+  return_by: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type BorrowStatus =
+  | "pending"
+  | "approved"
+  | "declined"
+  | "returned"
+  | "cancelled";
+
+export type BorrowRequest = {
+  id: string;
+  item_id: string;
+  owner_id: string;
+  requester_id: string;
+  status: BorrowStatus;
+  message: string | null;
+  requested_for_date: string | null;
+  return_by: string | null;
+  created_at: string;
+  decided_at: string | null;
+  returned_at: string | null;
+};
+
+export type Connection = {
+  user_id: string;
+  friend_id: string;
+  created_at: string;
+};
+
+export type ConnectionInvite = {
+  code: string;
+  inviter_id: string;
+  used_by_user_id: string | null;
+  used_at: string | null;
+  expires_at: string;
+  created_at: string;
 };
 
 export type DidYouKnowFact = {
@@ -78,6 +119,18 @@ export const CATEGORY_LABELS: Record<ItemCategory, string> = {
   coat: "Outerwear",
   shoes: "Shoes",
   accessory: "Accessory",
+};
+
+export const SHARE_STATE_LABELS: Record<ShareState, string> = {
+  private: "Private",
+  borrowable: "Borrowable",
+  up_for_grabs: "Up for grabs",
+};
+
+export const SHARE_STATE_HINTS: Record<ShareState, string> = {
+  private: "Only you can see this.",
+  borrowable: "Friends can ask to borrow.",
+  up_for_grabs: "Free for any friend to take. Permanent.",
 };
 
 export const COLOUR_OPTIONS = [

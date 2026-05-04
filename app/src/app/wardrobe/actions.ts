@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { analyzeWardrobePhoto, type AutoTagResult } from "@/lib/anthropic";
-import type { ItemCategory, Season, Occasion } from "@/lib/types";
+import type { ItemCategory, Season, Occasion, ShareState } from "@/lib/types";
 
 const BUCKET = "wardrobe-photos";
 
@@ -367,4 +367,28 @@ export async function updateItemAction(formData: FormData) {
   revalidatePath("/wardrobe");
   revalidatePath(`/wardrobe/${itemId}`);
   redirect(`/wardrobe/${itemId}`);
+}
+
+export async function setItemShareState(
+  itemId: string,
+  shareState: ShareState
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in");
+
+  const { error } = await supabase
+    .from("wardrobe_items")
+    .update({
+      share_state: shareState,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", itemId)
+    .eq("user_id", user.id);
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/wardrobe/${itemId}`);
+  revalidatePath("/friends");
 }

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/", label: "Home" },
   { href: "/wardrobe", label: "Wardrobe" },
+  { href: "/friends", label: "Friends" },
   { href: "/outfit", label: "Outfit" },
   { href: "/discover", label: "Discover" },
   { href: "/profile", label: "Profile" },
@@ -19,8 +20,12 @@ function isActive(pathname: string, href: string) {
 export function BottomNav() {
   const pathname = usePathname();
 
-  // Hide on auth routes — root layout still renders us, we self-hide.
-  if (pathname.startsWith("/signin") || pathname.startsWith("/auth/")) {
+  // Hide on auth + public landing routes — root layout still renders us, we self-hide.
+  if (
+    pathname.startsWith("/signin") ||
+    pathname.startsWith("/auth/") ||
+    pathname.startsWith("/invite/")
+  ) {
     return null;
   }
 

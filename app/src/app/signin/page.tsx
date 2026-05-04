@@ -5,7 +5,23 @@ export const metadata = {
   title: "Sign in — ReWear",
 };
 
-export default function SignInPage() {
+type SearchParams = Promise<{ next?: string }>;
+
+// Only allow same-site relative redirects (prevents open-redirect via ?next=https://evil)
+function safeNext(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  if (!raw.startsWith("/") || raw.startsWith("//")) return undefined;
+  return raw;
+}
+
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const { next } = await searchParams;
+  const safe = safeNext(next);
+
   return (
     <main className="flex flex-1 items-center justify-center px-6 py-12">
       <div className="w-full max-w-sm">
@@ -15,14 +31,16 @@ export default function SignInPage() {
             Welcome to ReWear.
           </h1>
           <p className="mt-3 text-base text-charcoal-soft">
-            Open your closet, not another app.
+            {safe?.startsWith("/invite/")
+              ? "Sign in to accept your invite."
+              : "Open your closet, not another app."}
           </p>
         </div>
 
-        <AuthForm />
+        <AuthForm next={safe} />
 
         <p className="mt-8 text-center text-xs text-charcoal-muted">
-          We'll email you a sign-in link. No password to remember.
+          We&apos;ll email you a sign-in link. No password to remember.
         </p>
       </div>
     </main>
