@@ -21,13 +21,28 @@ export const metadata: Metadata = {
   title: "ReWear",
   description: "Open your closet, not another app.",
   metadataBase: new URL("https://app.rewear.ai"),
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "ReWear",
+    statusBarStyle: "default",
+  },
+  applicationName: "ReWear",
+  icons: {
+    icon: "/rewear-logo.png",
+    shortcut: "/rewear-logo.png",
+    apple: "/rewear-logo.png",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#F5F0E6",
+  // Linen for the Safari URL-bar tint, forest for the standalone app theme.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#F5F0E6" },
+  ],
 };
 
 export default function RootLayout({

@@ -1,0 +1,39 @@
+{
+  "name": "ReWear",
+  "short_name": "ReWear",
+  "description": "Open your closet, not another app.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5F0E6",
+  "theme_color": "#2D6A47",
+  "categories": ["lifestyle", "shopping", "utilities"],
+  "lang": "en-GB",
+  "icons": [
+    {
+      "src": "/rewear-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/rewear-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/rewear-logo.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/rewear-logo.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

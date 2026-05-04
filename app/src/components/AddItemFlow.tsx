@@ -10,6 +10,7 @@ import {
 } from "@/app/wardrobe/actions";
 import { CATEGORY_LABELS, COLOUR_OPTIONS } from "@/lib/types";
 import type { AutoTagItem } from "@/lib/anthropic";
+import { SelfieCapture } from "@/components/SelfieCapture";
 
 const BUCKET = "wardrobe-photos";
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -48,6 +49,7 @@ type Phase =
 export function AddItemFlow() {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [savingTransition, startSaving] = useTransition();
+  const [selfieOpen, setSelfieOpen] = useState(false);
   const [sessionAdded, setSessionAdded] = useState<
     Array<{ id: string; name: string }>
   >([]);
@@ -203,9 +205,19 @@ export function AddItemFlow() {
     </div>
   );
 
+  function handleSelfieCaptured(file: File) {
+    setSelfieOpen(false);
+    handleFile(file);
+  }
+
   if (phase.kind === "idle") {
     return (
       <div>
+        <SelfieCapture
+          open={selfieOpen}
+          onClose={() => setSelfieOpen(false)}
+          onCapture={handleSelfieCaptured}
+        />
         {sessionRibbon}
 
         {justAddedFlash && (
@@ -241,17 +253,15 @@ export function AddItemFlow() {
               />
             </label>
 
-            {/* 2. Take selfie (front camera) */}
-            <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-forest-500 bg-linen-50 px-6 py-3 text-base font-medium text-forest-700 transition-colors hover:bg-forest-50">
+            {/* 2. Take selfie (front camera, custom capture for reliable
+                facingMode — iOS Safari ignores `capture="user"` on file inputs) */}
+            <button
+              type="button"
+              onClick={() => setSelfieOpen(true)}
+              className="inline-flex cursor-pointer items-center justify-center rounded-full border border-forest-500 bg-linen-50 px-6 py-3 text-base font-medium text-forest-700 transition-colors hover:bg-forest-50"
+            >
               Take a selfie
-              <input
-                type="file"
-                accept="image/*"
-                capture="user"
-                onChange={handleFileInput}
-                className="sr-only"
-              />
-            </label>
+            </button>
 
             {/* 3. Upload from library / files */}
             <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-charcoal/15 bg-linen-50 px-6 py-3 text-base font-medium text-charcoal-soft transition-colors hover:border-forest-500 hover:text-forest-700">
