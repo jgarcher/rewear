@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import { BottomNav } from "@/components/BottomNav";
+import { TopHeader } from "@/components/TopHeader";
 import "./globals.css";
 
 const fraunces = Fraunces({
@@ -38,6 +39,7 @@ export default function RootLayout({
       className={`${fraunces.variable} ${inter.variable} h-full antialiased`}
     >
       <body className="flex min-h-screen flex-col bg-linen-100 text-charcoal">
+        <TopHeader />
         <div className="flex flex-1 flex-col">{children}</div>
         <BottomNav />
       </body>

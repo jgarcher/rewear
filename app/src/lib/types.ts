@@ -105,6 +105,7 @@ export type DidYouKnowFact = {
 export type Profile = {
   user_id: string;
   display_name: string | null;
+  avatar_url: string | null;
   streak_count: number;
   last_logged_date: string | null;
   lifetime_rewears: number;
