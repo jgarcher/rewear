@@ -143,6 +143,105 @@ export async function markAsWorn(itemId: string) {
   revalidatePath("/");
 }
 
+// Log a multi-item outfit for today in one shot.
+// Idempotent: items already logged today are skipped. Streak only increments once per day.
+// Returns enough info for the client to show a celebration.
+export type LogOutfitResult = {
+  addedCount: number;       // newly inserted wear_log rows
+  alreadyLoggedCount: number; // items in selection that were already logged today
+  newStreak: number;
+  didIncrement: boolean;    // streak ticked up on this call
+  milestone: 3 | 7 | 14 | 30 | 100 | null;
+};
+
+export async function logTodaysOutfit(
+  itemIds: string[]
+): Promise<LogOutfitResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in");
+
+  const ids = Array.from(new Set(itemIds.filter(Boolean)));
+  if (ids.length === 0) {
+    throw new Error("Pick at least one item");
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Find which selected items are already in wear_log for today
+  const { data: existing, error: existingErr } = await supabase
+    .from("wear_log")
+    .select("item_id")
+    .eq("user_id", user.id)
+    .eq("worn_date", today)
+    .in("item_id", ids);
+  if (existingErr) throw new Error(existingErr.message);
+
+  const alreadyLogged = new Set((existing ?? []).map((w) => w.item_id));
+  const newIds = ids.filter((id) => !alreadyLogged.has(id));
+
+  // Insert new wear_log rows
+  if (newIds.length > 0) {
+    const rows = newIds.map((item_id) => ({
+      user_id: user.id,
+      item_id,
+      worn_date: today,
+    }));
+    const { error: insertErr } = await supabase.from("wear_log").insert(rows);
+    if (insertErr) throw new Error(insertErr.message);
+  }
+
+  // Streak + lifetime_rewears
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("streak_count, last_logged_date, lifetime_rewears")
+    .eq("user_id", user.id)
+    .single();
+
+  let newStreak = profile?.streak_count ?? 0;
+  let didIncrement = false;
+
+  if (profile) {
+    const last = profile.last_logged_date;
+    if (last !== today) {
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10);
+      newStreak = last === yesterday ? profile.streak_count + 1 : 1;
+      didIncrement = true;
+    }
+
+    await supabase
+      .from("profiles")
+      .update({
+        streak_count: newStreak,
+        last_logged_date: today,
+        lifetime_rewears: profile.lifetime_rewears + newIds.length,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", user.id);
+  }
+
+  const milestoneSet = new Set([3, 7, 14, 30, 100]);
+  const milestone =
+    didIncrement && milestoneSet.has(newStreak)
+      ? (newStreak as 3 | 7 | 14 | 30 | 100)
+      : null;
+
+  revalidatePath("/");
+  revalidatePath("/wardrobe");
+
+  return {
+    addedCount: newIds.length,
+    alreadyLoggedCount: alreadyLogged.size,
+    newStreak,
+    didIncrement,
+    milestone,
+  };
+}
+
 export async function deleteItem(itemId: string) {
   const supabase = await createClient();
   const {

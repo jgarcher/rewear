@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { calculateImpact, formatImpact } from "@/lib/impact";
+import { LogOutfitWidget } from "@/components/LogOutfitWidget";
+import type { WardrobeItem } from "@/lib/types";
 
 function greeting() {
   const h = new Date().getHours();
@@ -17,6 +19,9 @@ export default async function HomePage() {
 
   if (!user) return null; // proxy redirects, this is a fallback
 
+  const today = new Date().toISOString().slice(0, 10);
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
   // Profile (streak + lifetime rewears)
   const { data: profile } = await supabase
     .from("profiles")
@@ -24,12 +29,38 @@ export default async function HomePage() {
     .eq("user_id", user.id)
     .single();
 
-  // Item count (active only)
-  const { count: itemCount } = await supabase
+  // Active wardrobe (drives the Log Outfit sheet + count)
+  const { data: itemsRaw } = await supabase
     .from("wardrobe_items")
-    .select("id", { count: "exact", head: true })
+    .select("*")
     .eq("user_id", user.id)
-    .eq("status", "active");
+    .eq("status", "active")
+    .order("created_at", { ascending: false });
+  const items = (itemsRaw ?? []) as WardrobeItem[];
+
+  // Wear logs for today and yesterday — to power the widget context
+  const { data: recentLogs } = await supabase
+    .from("wear_log")
+    .select("item_id, worn_date")
+    .eq("user_id", user.id)
+    .in("worn_date", [today, yesterday]);
+
+  const itemMap = new Map(items.map((i) => [i.id, i]));
+  const wornTodayItems: WardrobeItem[] = [];
+  const wornYesterdayItems: WardrobeItem[] = [];
+  const seenToday = new Set<string>();
+  const seenYesterday = new Set<string>();
+  for (const log of recentLogs ?? []) {
+    const it = itemMap.get(log.item_id);
+    if (!it) continue;
+    if (log.worn_date === today && !seenToday.has(it.id)) {
+      seenToday.add(it.id);
+      wornTodayItems.push(it);
+    } else if (log.worn_date === yesterday && !seenYesterday.has(it.id)) {
+      seenYesterday.add(it.id);
+      wornYesterdayItems.push(it);
+    }
+  }
 
   // Did You Know — pick one based on day of year so it rotates daily
   const { data: facts } = await supabase
@@ -47,10 +78,7 @@ export default async function HomePage() {
   const impact = calculateImpact(rewears);
   const formatted = formatImpact(impact);
   const streak = profile?.streak_count ?? 0;
-
-  // Streak status
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const loggedToday = profile?.last_logged_date === today;
   const streakActive =
     profile?.last_logged_date === today ||
     profile?.last_logged_date === yesterday;
@@ -58,65 +86,45 @@ export default async function HomePage() {
   return (
     <main className="flex-1 px-6 py-8 sm:py-12">
       <div className="mx-auto max-w-2xl">
-        {/* Greeting + streak */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-forest-500">
-              Today
-            </p>
-            <h1 className="mt-2 font-heading text-3xl font-medium tracking-tight text-charcoal sm:text-4xl">
-              {greeting()}, {name}.
-            </h1>
-          </div>
-          {streak > 0 && streakActive && (
-            <div className="text-right">
-              <p className="text-xs uppercase tracking-wider text-charcoal-muted">
-                Streak
-              </p>
-              <p className="font-heading text-2xl font-medium text-forest-500">
-                {streak} {streak === 1 ? "day" : "days"}
-              </p>
-            </div>
-          )}
+        {/* Greeting */}
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.2em] text-forest-500">
+            Today
+          </p>
+          <h1 className="mt-2 font-heading text-3xl font-medium tracking-tight text-charcoal sm:text-4xl">
+            {greeting()}, {name}.
+          </h1>
         </div>
 
-        {/* Today's outfit placeholder */}
-        <div className="mt-10 rounded-3xl border border-linen-200 bg-linen-50 p-8 sm:p-10">
-          <p className="text-xs uppercase tracking-wider text-forest-500">
-            Today's outfit
-          </p>
-          {(itemCount ?? 0) < 3 ? (
-            <>
+        {/* Log Outfit Widget — the daily ritual, hero of the home page */}
+        <div className="mt-8">
+          {items.length === 0 ? (
+            <section className="rounded-3xl border border-linen-200 bg-linen-50 p-8 sm:p-10">
+              <p className="text-xs uppercase tracking-wider text-forest-500">
+                First, your closet
+              </p>
               <p className="mt-3 font-heading text-2xl font-medium text-charcoal sm:text-3xl">
-                Add a few pieces and we'll start building outfits.
+                Add a few pieces and you can start logging your outfits.
               </p>
               <p className="mt-3 text-base text-charcoal-soft">
-                We need at least 3–5 items in your wardrobe to make sensible
-                suggestions.
+                Three to five items is enough to get rolling.
               </p>
               <Link
                 href="/wardrobe/add"
                 className="mt-6 inline-block rounded-full bg-forest-500 px-6 py-3 text-sm font-medium text-linen-100 transition-colors hover:bg-forest-600"
               >
-                Add a piece
+                Add your first piece
               </Link>
-            </>
+            </section>
           ) : (
-            <>
-              <p className="mt-3 font-heading text-2xl font-medium text-charcoal sm:text-3xl">
-                Pick the day, we'll pick the outfit.
-              </p>
-              <p className="mt-3 text-base text-charcoal-soft">
-                The AI lands in Session 8. For now, head to Outfit and let us
-                know what you're up to.
-              </p>
-              <Link
-                href="/outfit"
-                className="mt-6 inline-block rounded-full bg-forest-500 px-6 py-3 text-sm font-medium text-linen-100 transition-colors hover:bg-forest-600"
-              >
-                Build an outfit
-              </Link>
-            </>
+            <LogOutfitWidget
+              streak={streak}
+              streakActive={streakActive}
+              loggedToday={loggedToday}
+              wardrobe={items}
+              wornTodayItems={wornTodayItems}
+              wornYesterdayItems={wornYesterdayItems}
+            />
           )}
         </div>
 
@@ -127,7 +135,7 @@ export default async function HomePage() {
               Items
             </p>
             <p className="mt-1 font-heading text-2xl font-medium text-charcoal">
-              {itemCount ?? 0}
+              {items.length}
             </p>
           </div>
           <div className="rounded-2xl border border-linen-200 bg-linen-50 p-4 text-center">
@@ -170,7 +178,7 @@ export default async function HomePage() {
             </>
           ) : (
             <p className="mt-2 text-base text-charcoal-soft sm:text-lg">
-              Mark something as worn and we'll start counting.
+              Log your first outfit and we&apos;ll start counting.
             </p>
           )}
         </div>

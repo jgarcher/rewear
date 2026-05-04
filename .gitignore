@@ -17,3 +17,7 @@ Thumbs.db
 
 # Dependencies (Next.js will add its own .gitignore inside site/)
 node_modules/
+
+# Build output (each Next.js app has its own; this catches stray builds at repo root)
+.next/
+out/
