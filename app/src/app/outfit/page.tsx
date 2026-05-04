@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { OutfitForm } from "@/components/OutfitForm";
+import { OutfitPicker } from "@/components/OutfitPicker";
 import { getWeather } from "@/lib/weather";
 
 export const metadata = { title: "Outfit — ReWear" };
@@ -45,32 +45,26 @@ export default async function OutfitPage() {
     );
   }
 
-  // Fetch weather to display in the form
   const weather = await getWeather();
 
   return (
     <main className="flex-1 px-6 py-8 sm:py-12">
-      <div className="mx-auto max-w-xl">
+      <div className="mx-auto max-w-2xl">
         <p className="text-xs font-medium uppercase tracking-[0.2em] text-forest-500">
           Outfit
         </p>
         <h1 className="mt-3 font-heading text-3xl font-medium tracking-tight text-charcoal sm:text-4xl">
-          What's the day looking like?
+          Pick the day, we&apos;ll pick the look.
         </h1>
 
-        {/* Weather card */}
-        <div className="mt-8 rounded-2xl border border-linen-200 bg-linen-50 px-6 py-4">
-          <p className="text-xs uppercase tracking-wider text-charcoal-muted">
-            Right now in {weather.city}
-          </p>
-          <p className="mt-1 font-heading text-xl text-charcoal">
-            {weather.description}
-          </p>
-        </div>
+        {/* Quiet weather strip */}
+        <p className="mt-3 text-sm text-charcoal-muted">
+          {weather.city} · {Math.round(weather.temp_c)}°C ·{" "}
+          {weather.description.toLowerCase()}
+        </p>
 
-        {/* Form */}
-        <div className="mt-10">
-          <OutfitForm />
+        <div className="mt-8">
+          <OutfitPicker />
         </div>
       </div>
     </main>
