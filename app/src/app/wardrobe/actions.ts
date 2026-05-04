@@ -93,56 +93,6 @@ export async function addItem(formData: FormData) {
   redirect(`/wardrobe/${itemId}`);
 }
 
-export async function markAsWorn(itemId: string) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in");
-
-  const today = new Date().toISOString().slice(0, 10);
-
-  // Insert wear log entry
-  const { error: wearError } = await supabase.from("wear_log").insert({
-    user_id: user.id,
-    item_id: itemId,
-    worn_date: today,
-  });
-  if (wearError) throw new Error(wearError.message);
-
-  // Update streak + lifetime_rewears on profile
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("streak_count, last_logged_date, lifetime_rewears")
-    .eq("user_id", user.id)
-    .single();
-
-  if (profile) {
-    const last = profile.last_logged_date;
-    let newStreak = profile.streak_count;
-    if (last !== today) {
-      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10);
-      newStreak = last === yesterday ? profile.streak_count + 1 : 1;
-    }
-
-    await supabase
-      .from("profiles")
-      .update({
-        streak_count: newStreak,
-        last_logged_date: today,
-        lifetime_rewears: profile.lifetime_rewears + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", user.id);
-  }
-
-  revalidatePath("/wardrobe");
-  revalidatePath(`/wardrobe/${itemId}`);
-  revalidatePath("/");
-}
-
 // Log a multi-item outfit for today in one shot.
 // Idempotent: items already logged today are skipped. Streak only increments once per day.
 // Returns enough info for the client to show a celebration.
