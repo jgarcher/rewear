@@ -247,6 +247,40 @@ export async function cancelBorrowRequest(requestId: string): Promise<void> {
   revalidatePath(`/wardrobe/${req.item_id}`);
 }
 
+// Borrower-only: marks the loan as received in hand.
+// Transitions approved → received, stamps received_at.
+export async function markReceived(requestId: string): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in");
+
+  const { data: req, error: reqErr } = await supabase
+    .from("borrow_requests")
+    .select("id, item_id, requester_id, status")
+    .eq("id", requestId)
+    .single();
+  if (reqErr || !req) throw new Error("Request not found");
+  if (req.requester_id !== user.id)
+    throw new Error("Only the borrower can confirm receipt");
+  if (req.status !== "approved")
+    throw new Error("Only approved loans can be marked received");
+
+  const { error: updErr } = await supabase
+    .from("borrow_requests")
+    .update({
+      status: "received",
+      received_at: new Date().toISOString(),
+    })
+    .eq("id", requestId);
+  if (updErr) throw new Error(updErr.message);
+
+  revalidatePath("/friends");
+  revalidatePath("/wardrobe");
+  revalidatePath(`/wardrobe/${req.item_id}`);
+}
+
 export async function markReturned(requestId: string): Promise<void> {
   const supabase = await createClient();
   const {
@@ -262,8 +296,9 @@ export async function markReturned(requestId: string): Promise<void> {
   if (reqErr || !req) throw new Error("Request not found");
   if (req.owner_id !== user.id)
     throw new Error("Only the owner can confirm a return");
-  if (req.status !== "approved")
-    throw new Error("Only approved loans can be returned");
+  // Accept either approved (skipped received step) or received
+  if (!["approved", "received"].includes(req.status))
+    throw new Error("Only active loans can be returned");
 
   const { error: updErr } = await supabase
     .from("borrow_requests")
@@ -285,5 +320,6 @@ export async function markReturned(requestId: string): Promise<void> {
     .eq("user_id", user.id);
 
   revalidatePath("/friends");
+  revalidatePath("/wardrobe");
   revalidatePath(`/wardrobe/${req.item_id}`);
 }

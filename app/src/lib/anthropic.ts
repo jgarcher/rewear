@@ -80,6 +80,7 @@ Rules:
 - Match formality with occasion (school/casual loose, work polished, evening considered, special pieces only for special)
 - Filter to season-appropriate items unless the item is tagged "all"
 - NEVER include items the user has worn in the recent_wears list
+- Some items have "borrowable_from" set — they belong to a friend. Use these sparingly: pick at most one per outfit, and only when a friend's piece is genuinely the right fit. When you do, name the friend in the reasoning ("borrow Anna's white Vejas")
 
 Reasoning style — exactly 1 to 3 short sentences in the ReWear voice:
 - Reference specific items by name and a wear-data observation
@@ -104,6 +105,9 @@ type WardrobeItem = {
   status: string;
   wear_count: number;
   last_worn_date: string | null;
+  // When set, this item belongs to a friend and is marked borrowable.
+  // The user would need to ask to borrow before wearing it.
+  borrowable_from?: string | null;
 };
 
 type GenerateInput = {

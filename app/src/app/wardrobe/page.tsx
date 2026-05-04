@@ -20,25 +20,52 @@ export default async function WardrobePage({
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: items } = await supabase
-    .from("wardrobe_items")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .order("created_at", { ascending: false });
+  const [{ data: ownedItems }, { data: borrowedItems }] = await Promise.all([
+    supabase
+      .from("wardrobe_items")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .order("created_at", { ascending: false }),
+    // Items currently lent TO me — visible thanks to the friend RLS policy
+    supabase
+      .from("wardrobe_items")
+      .select("*")
+      .eq("lent_to_user_id", user.id)
+      .order("created_at", { ascending: false }),
+  ]);
 
+  const owned = (ownedItems ?? []) as WardrobeItem[];
+  const borrowed = (borrowedItems ?? []) as WardrobeItem[];
+
+  // Resolve owner names for borrowed items
+  const ownerIds = Array.from(new Set(borrowed.map((b) => b.user_id)));
+  const ownerNames = new Map<string, string>();
+  if (ownerIds.length > 0) {
+    const { data: profs } = await supabase
+      .from("profiles")
+      .select("user_id, display_name")
+      .in("user_id", ownerIds);
+    for (const p of profs ?? []) {
+      ownerNames.set(p.user_id, p.display_name ?? "Friend");
+    }
+  }
+
+  // Combined list (borrowed first so the green-outline ones get attention)
+  const all: WardrobeItem[] = [...borrowed, ...owned];
   const filtered = category
-    ? (items ?? []).filter((i) => i.category === category)
-    : items ?? [];
+    ? all.filter((i) => i.category === category)
+    : all;
 
-  // Wear counts per item
-  const ids = filtered.map((i: WardrobeItem) => i.id);
+  // Wear counts (owned items only — borrowed wear stats live on owner's side)
+  const ownedIds = filtered.filter((i) => !ownerNames.has(i.user_id)).map((i) => i.id);
   let wearCounts: Record<string, number> = {};
-  if (ids.length > 0) {
+  if (ownedIds.length > 0) {
     const { data: wears } = await supabase
       .from("wear_log")
       .select("item_id")
-      .in("item_id", ids);
+      .eq("user_id", user.id)
+      .in("item_id", ownedIds);
     wearCounts = (wears ?? []).reduce<Record<string, number>>((acc, w) => {
       acc[w.item_id] = (acc[w.item_id] ?? 0) + 1;
       return acc;
@@ -46,6 +73,9 @@ export default async function WardrobePage({
   }
 
   const categoryKeys = Object.keys(CATEGORY_LABELS) as ItemCategory[];
+  const totalCount = all.length;
+  const ownedCount = owned.length;
+  const borrowedCount = borrowed.length;
 
   return (
     <main className="flex-1 px-6 py-8 sm:py-12">
@@ -56,10 +86,15 @@ export default async function WardrobePage({
               Wardrobe
             </p>
             <h1 className="mt-3 font-heading text-4xl font-medium tracking-tight text-charcoal sm:text-5xl">
-              {(items ?? []).length === 0
+              {totalCount === 0
                 ? "Empty closet."
-                : `${(items ?? []).length} ${(items ?? []).length === 1 ? "piece" : "pieces"}.`}
+                : `${totalCount} ${totalCount === 1 ? "piece" : "pieces"}.`}
             </h1>
+            {borrowedCount > 0 && (
+              <p className="mt-2 text-sm text-charcoal-soft">
+                {ownedCount} yours · {borrowedCount} borrowed
+              </p>
+            )}
           </div>
           <Link
             href="/wardrobe/add"
@@ -70,7 +105,7 @@ export default async function WardrobePage({
         </div>
 
         {/* Category filter */}
-        {(items ?? []).length > 0 && (
+        {totalCount > 0 && (
           <div className="mt-8 flex flex-wrap gap-2">
             <Link
               href="/wardrobe"
@@ -120,13 +155,17 @@ export default async function WardrobePage({
           </div>
         ) : (
           <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {filtered.map((item: WardrobeItem) => (
-              <ItemCard
-                key={item.id}
-                item={item}
-                wearCount={wearCounts[item.id] ?? 0}
-              />
-            ))}
+            {filtered.map((item: WardrobeItem) => {
+              const borrowedFrom = ownerNames.get(item.user_id) ?? null;
+              return (
+                <ItemCard
+                  key={item.id}
+                  item={item}
+                  wearCount={wearCounts[item.id] ?? 0}
+                  borrowedFrom={borrowedFrom}
+                />
+              );
+            })}
           </div>
         )}
 

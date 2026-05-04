@@ -13,6 +13,10 @@ export default async function OutfitResultPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
 
   // Fetch outfit
   const { data: outfit, error } = await supabase
@@ -33,7 +37,7 @@ export default async function OutfitResultPage({
   const { data: wardrobeItems } = itemIds.length
     ? await supabase
         .from("wardrobe_items")
-        .select("id, name, photo_url, category, brand")
+        .select("id, user_id, name, photo_url, category, brand, lent_to_user_id, share_state")
         .in("id", itemIds)
     : { data: [] };
 
@@ -41,10 +45,32 @@ export default async function OutfitResultPage({
     (wardrobeItems ?? []).map((w) => [w.id, w] as const)
   );
 
+  // Owner display names for friend items
+  const friendOwnerIds = Array.from(
+    new Set(
+      (wardrobeItems ?? [])
+        .filter((w) => w.user_id !== user.id)
+        .map((w) => w.user_id)
+    )
+  );
+  const ownerNames = new Map<string, string>();
+  if (friendOwnerIds.length > 0) {
+    const { data: profs } = await supabase
+      .from("profiles")
+      .select("user_id, display_name")
+      .in("user_id", friendOwnerIds);
+    for (const p of profs ?? []) {
+      ownerNames.set(p.user_id, p.display_name ?? "Friend");
+    }
+  }
+
   const items = (outfitItems ?? [])
     .map((oi) => {
       const w = itemsById.get(oi.item_id);
       if (!w) return null;
+      const isOwn = w.user_id === user.id;
+      const isBorrowing = w.lent_to_user_id === user.id;
+      const fromName = !isOwn ? ownerNames.get(w.user_id) ?? "Friend" : null;
       return {
         id: w.id,
         name: w.name as string,
@@ -52,12 +78,18 @@ export default async function OutfitResultPage({
         category: w.category as string,
         brand: w.brand as string | null,
         role: oi.role as string,
+        isOwn,
+        isBorrowing,
+        fromName,
       };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
   const isFallback = items.length === 0;
   const alreadyWorn = !!outfit.worn_date;
+  const hasUnborrowedFriendItems = items.some(
+    (i) => !i.isOwn && !i.isBorrowing
+  );
 
   return (
     <main className="flex-1 px-6 py-8 sm:py-12">
@@ -70,7 +102,7 @@ export default async function OutfitResultPage({
         </Link>
 
         <p className="mt-6 text-xs font-medium uppercase tracking-[0.2em] text-forest-500">
-          Today's outfit
+          Today&apos;s outfit
         </p>
 
         <div className="mt-3 flex items-baseline justify-between gap-4">
@@ -97,38 +129,54 @@ export default async function OutfitResultPage({
           <>
             {/* Item grid */}
             <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {items.map((item) => (
-                <Link
-                  key={item.id}
-                  href={`/wardrobe/${item.id}`}
-                  className="group block overflow-hidden rounded-2xl border border-linen-200 bg-linen-50"
-                >
-                  <div className="relative aspect-square w-full bg-linen-200">
-                    {item.photo_url ? (
-                      <Image
-                        src={item.photo_url}
-                        alt={item.name}
-                        fill
-                        sizes="(max-width: 640px) 50vw, 33vw"
-                        className="object-cover"
-                      />
-                    ) : null}
-                    <span className="absolute left-2 top-2 rounded-full bg-forest-500/90 px-2 py-0.5 text-xs uppercase tracking-wide text-linen-100">
-                      {item.role}
-                    </span>
-                  </div>
-                  <div className="p-3">
-                    <p className="truncate text-sm font-medium text-charcoal">
-                      {item.name}
-                    </p>
-                    {item.brand && (
-                      <p className="mt-0.5 truncate text-xs text-charcoal-muted">
-                        {item.brand}
+              {items.map((item) => {
+                const showBorrowOutline = !item.isOwn;
+                return (
+                  <Link
+                    key={item.id}
+                    href={`/wardrobe/${item.id}`}
+                    className={`group block overflow-hidden rounded-2xl border-2 bg-linen-50 transition-colors ${
+                      showBorrowOutline
+                        ? "border-forest-500 ring-2 ring-forest-500/15"
+                        : "border-linen-200"
+                    }`}
+                  >
+                    <div className="relative aspect-square w-full bg-linen-200">
+                      {item.photo_url ? (
+                        <Image
+                          src={item.photo_url}
+                          alt={item.name}
+                          fill
+                          sizes="(max-width: 640px) 50vw, 33vw"
+                          className="object-cover"
+                        />
+                      ) : null}
+                      <span className="absolute left-2 top-2 rounded-full bg-forest-500/90 px-2 py-0.5 text-xs uppercase tracking-wide text-linen-100">
+                        {item.role}
+                      </span>
+                      {showBorrowOutline && (
+                        <span className="absolute right-2 top-2 rounded-full bg-clay-500/95 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-linen-100">
+                          Ask {item.fromName}
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-3">
+                      <p className="truncate text-sm font-medium text-charcoal">
+                        {item.name}
                       </p>
-                    )}
-                  </div>
-                </Link>
-              ))}
+                      {showBorrowOutline ? (
+                        <p className="mt-0.5 truncate text-xs text-forest-700">
+                          From {item.fromName}
+                        </p>
+                      ) : item.brand ? (
+                        <p className="mt-0.5 truncate text-xs text-charcoal-muted">
+                          {item.brand}
+                        </p>
+                      ) : null}
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
 
             {/* AI reasoning — voice block */}
@@ -137,6 +185,14 @@ export default async function OutfitResultPage({
                 <p className="font-heading text-lg leading-relaxed text-charcoal sm:text-xl">
                   {outfit.ai_reasoning}
                 </p>
+              </div>
+            )}
+
+            {/* Borrow nudge */}
+            {hasUnborrowedFriendItems && (
+              <div className="mt-4 rounded-2xl border border-clay-100 bg-clay-100/40 p-4 text-sm text-charcoal">
+                Tap any friend&apos;s piece above to ask to borrow it. We&apos;ll
+                only count it as worn once you&apos;ve actually got it.
               </div>
             )}
 

@@ -6,6 +6,24 @@ import { createClient } from "@/lib/supabase/server";
 const BUCKET = "profile-photos";
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // 8 MB
 
+// Translate raw Postgres / Supabase Storage errors into copy a user can act on.
+function friendlyError(message: string): string {
+  const m = message.toLowerCase();
+  if (
+    m.includes("avatar_url") &&
+    (m.includes("does not exist") || m.includes("could not find"))
+  ) {
+    return "Database not migrated yet — run migration 0005 in Supabase, then try again.";
+  }
+  if (m.includes("bucket not found") || m.includes("profile-photos")) {
+    return "Photo storage not set up yet — run migration 0005 in Supabase, then try again.";
+  }
+  if (m.includes("row level security") || m.includes("rls")) {
+    return "Permission error — sign out and back in, then retry.";
+  }
+  return message;
+}
+
 export async function updateProfile(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const {
@@ -44,7 +62,7 @@ export async function updateProfile(formData: FormData): Promise<void> {
         cacheControl: "3600",
       });
     if (uploadErr) {
-      throw new Error(`Photo upload failed: ${uploadErr.message}`);
+      throw new Error(friendlyError(uploadErr.message));
     }
 
     const {
@@ -54,18 +72,41 @@ export async function updateProfile(formData: FormData): Promise<void> {
     avatarUrl = `${publicUrl}?v=${Date.now()}`;
   }
 
-  const updatePayload: { display_name: string; avatar_url?: string; updated_at: string } =
-    {
-      display_name: displayName,
-      updated_at: new Date().toISOString(),
-    };
+  const updatePayload: {
+    display_name: string;
+    avatar_url?: string;
+    updated_at: string;
+  } = {
+    display_name: displayName,
+    updated_at: new Date().toISOString(),
+  };
   if (avatarUrl) updatePayload.avatar_url = avatarUrl;
 
   const { error: updErr } = await supabase
     .from("profiles")
     .update(updatePayload)
     .eq("user_id", user.id);
-  if (updErr) throw new Error(updErr.message);
+
+  if (updErr) {
+    // If avatar_url column is missing, retry without it so name still saves.
+    const msg = updErr.message.toLowerCase();
+    const columnMissing =
+      msg.includes("avatar_url") &&
+      (msg.includes("does not exist") || msg.includes("could not find"));
+
+    if (columnMissing && !avatarUrl) {
+      const { error: retryErr } = await supabase
+        .from("profiles")
+        .update({
+          display_name: displayName,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id);
+      if (retryErr) throw new Error(friendlyError(retryErr.message));
+    } else {
+      throw new Error(friendlyError(updErr.message));
+    }
+  }
 
   revalidatePath("/profile");
   revalidatePath("/profile/edit");
@@ -79,19 +120,22 @@ export async function removeAvatar(): Promise<void> {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in");
 
-  // Find any avatar files in the user's folder and remove them.
-  const { data: files } = await supabase.storage
-    .from(BUCKET)
-    .list(user.id);
-  if (files && files.length > 0) {
-    const paths = files.map((f) => `${user.id}/${f.name}`);
-    await supabase.storage.from(BUCKET).remove(paths);
+  // Best-effort: bucket may not exist if migration 0005 hasn't run
+  try {
+    const { data: files } = await supabase.storage.from(BUCKET).list(user.id);
+    if (files && files.length > 0) {
+      const paths = files.map((f) => `${user.id}/${f.name}`);
+      await supabase.storage.from(BUCKET).remove(paths);
+    }
+  } catch {
+    // Swallow storage errors — the avatar_url cleanup is the primary state
   }
 
-  await supabase
+  const { error } = await supabase
     .from("profiles")
     .update({ avatar_url: null, updated_at: new Date().toISOString() })
     .eq("user_id", user.id);
+  if (error) throw new Error(friendlyError(error.message));
 
   revalidatePath("/profile");
   revalidatePath("/profile/edit");

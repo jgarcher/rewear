@@ -15,8 +15,8 @@ export function AcceptInviteButton({ code }: Props) {
     setError(null);
     startTransition(async () => {
       try {
-        await acceptInvite(code);
-        router.push("/friends");
+        const result = await acceptInvite(code);
+        router.push(`/friends?welcome=${encodeURIComponent(result.inviter_id)}`);
       } catch (e) {
         const raw = e instanceof Error ? e.message : "Couldn't accept";
         // Surface postgres exception names with friendlier copy

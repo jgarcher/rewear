@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   CancelRequestButton,
   IncomingRequestActions,
+  MarkReceivedButton,
   MarkReturnedButton,
 } from "@/components/BorrowRequestActions";
 import type { WardrobeItem } from "@/lib/types";
@@ -36,24 +37,38 @@ type OutgoingRequest = {
 
 type ApprovedLoan = {
   id: string;
+  status: "approved" | "received";
   return_by: string | null;
+  decided_at: string | null;
+  received_at: string | null;
   item: WardrobeItem | null;
   counterpartyName: string;
 };
 
-export default async function FriendsPage() {
+type SearchParams = Promise<{ welcome?: string }>;
+
+export default async function FriendsPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const { welcome } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  // 1. My friends
+  // 1. My friends + when each was added (sorted recent-first)
   const { data: connections } = await supabase
     .from("connections")
-    .select("friend_id")
-    .eq("user_id", user.id);
+    .select("friend_id, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
   const friendIds = (connections ?? []).map((c) => c.friend_id);
+  const friendAddedAt = new Map(
+    (connections ?? []).map((c) => [c.friend_id, c.created_at])
+  );
 
   // 2. Friend profiles (display names)
   const friendProfiles = new Map<string, FriendProfile>();
@@ -104,20 +119,20 @@ export default async function FriendsPage() {
     .eq("status", "pending")
     .order("created_at", { ascending: false });
 
-  // 6. Approved loans I'm currently lending
+  // 6. Active loans I'm currently lending (approved + received)
   const { data: lendingRaw } = await supabase
     .from("borrow_requests")
-    .select("id, return_by, item_id, requester_id")
+    .select("id, status, return_by, decided_at, received_at, item_id, requester_id")
     .eq("owner_id", user.id)
-    .eq("status", "approved")
+    .in("status", ["approved", "received"])
     .order("decided_at", { ascending: false });
 
-  // 7. Approved loans I'm currently borrowing
+  // 7. Active loans I'm currently borrowing
   const { data: borrowingRaw } = await supabase
     .from("borrow_requests")
-    .select("id, return_by, item_id, owner_id")
+    .select("id, status, return_by, decided_at, received_at, item_id, owner_id")
     .eq("requester_id", user.id)
-    .eq("status", "approved")
+    .in("status", ["approved", "received"])
     .order("decided_at", { ascending: false });
 
   // Resolve item details for all the request rows in one query
@@ -177,14 +192,20 @@ export default async function FriendsPage() {
 
   const lending: ApprovedLoan[] = (lendingRaw ?? []).map((r) => ({
     id: r.id,
+    status: r.status as "approved" | "received",
     return_by: r.return_by,
+    decided_at: r.decided_at,
+    received_at: r.received_at,
     item: itemsById.get(r.item_id) ?? null,
     counterpartyName: nameOf(r.requester_id),
   }));
 
   const borrowing: ApprovedLoan[] = (borrowingRaw ?? []).map((r) => ({
     id: r.id,
+    status: r.status as "approved" | "received",
     return_by: r.return_by,
+    decided_at: r.decided_at,
+    received_at: r.received_at,
     item: itemsById.get(r.item_id) ?? null,
     counterpartyName: nameOf(r.owner_id),
   }));
@@ -198,6 +219,28 @@ export default async function FriendsPage() {
   }
 
   const totalActions = incoming.length + outgoing.length + lending.length;
+
+  // Welcome banner: did we just accept this friend's invite?
+  const welcomeName =
+    welcome && friendProfiles.has(welcome) ? nameOf(welcome) : null;
+
+  // How many of MY items are shared? (drives the "share back" nudge)
+  const { count: myBorrowableCount } = await supabase
+    .from("wardrobe_items")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .in("share_state", ["borrowable", "up_for_grabs"]);
+
+  // Recently connected friends (last 7 days) — for the "newly connected" surface
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recentFriendIds = friendIds.filter((id) => {
+    const t = friendAddedAt.get(id);
+    return t && new Date(t).getTime() > sevenDaysAgo;
+  });
+
+  const showShareNudge =
+    friendIds.length > 0 && (myBorrowableCount ?? 0) === 0;
 
   return (
     <main className="flex-1 px-6 py-8 sm:py-12">
@@ -232,6 +275,82 @@ export default async function FriendsPage() {
             + Invite
           </Link>
         </div>
+
+        {/* Welcome banner — just accepted an invite */}
+        {welcomeName && (
+          <div className="mt-6 overflow-hidden rounded-3xl bg-gradient-to-br from-forest-500 to-forest-700 p-6 text-linen-100 sm:p-8">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-linen-100/70">
+              You&apos;re connected
+            </p>
+            <h2 className="mt-2 font-heading text-2xl font-medium sm:text-3xl">
+              {welcomeName} is now in your circle.
+            </h2>
+            <p className="mt-2 text-sm text-linen-100/85 sm:text-base">
+              You can both see what each other&apos;s marked borrowable. Share
+              something of yours so {welcomeName} can borrow back.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Link
+                href="/wardrobe"
+                className="rounded-full bg-linen-100 px-5 py-2.5 text-sm font-medium text-forest-700 transition-colors hover:bg-linen-50"
+              >
+                Share something
+              </Link>
+              <Link
+                href="/friends/invite"
+                className="rounded-full border border-linen-100/30 px-5 py-2.5 text-sm font-medium text-linen-100 transition-colors hover:bg-linen-100/10"
+              >
+                Invite someone else
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Recently connected (last 7 days, excluding the welcome banner friend) */}
+        {!welcomeName && recentFriendIds.length > 0 && (
+          <Section label="Newly connected">
+            <div className="flex flex-wrap gap-3">
+              {recentFriendIds.map((id) => (
+                <div
+                  key={id}
+                  className="flex items-center gap-3 rounded-2xl border border-forest-100 bg-forest-50 px-4 py-3"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-forest-500 text-sm font-medium text-linen-100">
+                    {(nameOf(id)[0] ?? "?").toUpperCase()}
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-charcoal">
+                      {nameOf(id)}
+                    </p>
+                    <p className="text-xs text-charcoal-muted">
+                      Just joined your circle
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* Share-back nudge: friends but no shared items */}
+        {showShareNudge && (
+          <div className="mt-6 rounded-2xl border border-forest-100 bg-forest-50 p-5">
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-forest-700">
+              Share back
+            </p>
+            <p className="mt-2 text-sm text-charcoal">
+              You haven&apos;t marked anything borrowable yet. Open an item in
+              your wardrobe and switch it to <strong>Borrowable</strong> so
+              friends can ask to borrow.
+            </p>
+            <Link
+              href="/wardrobe"
+              className="mt-3 inline-block rounded-full bg-forest-500 px-5 py-2 text-xs font-medium text-linen-100 transition-colors hover:bg-forest-600"
+            >
+              Pick something to share
+            </Link>
+          </div>
+        )}
 
         {/* Empty state */}
         {friendIds.length === 0 && (
@@ -274,39 +393,69 @@ export default async function FriendsPage() {
           </Section>
         )}
 
-        {/* Lending out (approved, not yet returned) */}
+        {/* Lending out (approved or received, not yet returned) */}
         {lending.length > 0 && (
           <Section label="Currently lent out">
             <div className="space-y-3">
-              {lending.map((r) => (
-                <RequestCard
-                  key={r.id}
-                  item={r.item}
-                  primary={`Lent to ${r.counterpartyName}`}
-                  secondary={
-                    r.return_by ? `Back by ${formatDate(r.return_by)}` : null
-                  }
-                  action={<MarkReturnedButton requestId={r.id} />}
-                />
-              ))}
+              {lending.map((r) => {
+                const stamp = r.received_at
+                  ? `Received ${relTime(r.received_at)}`
+                  : r.decided_at
+                  ? `Approved ${relTime(r.decided_at)}`
+                  : null;
+                const due = r.return_by
+                  ? ` · Back by ${formatDate(r.return_by)}`
+                  : "";
+                return (
+                  <RequestCard
+                    key={r.id}
+                    item={r.item}
+                    primary={
+                      r.status === "received"
+                        ? `${r.counterpartyName} has it`
+                        : `Awaiting handover to ${r.counterpartyName}`
+                    }
+                    secondary={stamp ? `${stamp}${due}` : due || null}
+                    action={<MarkReturnedButton requestId={r.id} />}
+                  />
+                );
+              })}
             </div>
           </Section>
         )}
 
-        {/* Borrowing (approved, in your hands) */}
+        {/* Borrowing (approved or received) */}
         {borrowing.length > 0 && (
           <Section label="In your hands">
             <div className="space-y-3">
-              {borrowing.map((r) => (
-                <RequestCard
-                  key={r.id}
-                  item={r.item}
-                  primary={`Borrowed from ${r.counterpartyName}`}
-                  secondary={
-                    r.return_by ? `Back by ${formatDate(r.return_by)}` : null
-                  }
-                />
-              ))}
+              {borrowing.map((r) => {
+                const stamp =
+                  r.status === "received" && r.received_at
+                    ? `Received ${relTime(r.received_at)}`
+                    : r.decided_at
+                    ? `Approved ${relTime(r.decided_at)}`
+                    : null;
+                const due = r.return_by
+                  ? ` · Back by ${formatDate(r.return_by)}`
+                  : "";
+                return (
+                  <RequestCard
+                    key={r.id}
+                    item={r.item}
+                    primary={
+                      r.status === "received"
+                        ? `Borrowed from ${r.counterpartyName}`
+                        : `${r.counterpartyName} approved — pick it up`
+                    }
+                    secondary={stamp ? `${stamp}${due}` : due || null}
+                    action={
+                      r.status === "approved" ? (
+                        <MarkReceivedButton requestId={r.id} />
+                      ) : null
+                    }
+                  />
+                );
+              })}
             </div>
           </Section>
         )}

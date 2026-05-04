@@ -7,6 +7,7 @@ import { ShareStatePicker } from "@/components/ShareStatePicker";
 import { BorrowRequestButton } from "@/components/BorrowRequestButton";
 import {
   IncomingRequestActions,
+  MarkReceivedButton,
   MarkReturnedButton,
 } from "@/components/BorrowRequestActions";
 import { CATEGORY_LABELS, type ShareState } from "@/lib/types";
@@ -89,14 +90,15 @@ export default async function ItemDetailPage({
     return_by: string | null;
   }> = [];
   let activeLoanId: string | null = null;
+  let activeLoanStatus: "approved" | "received" | null = null;
   if (isOwner) {
     const { data: prs } = await supabase
       .from("borrow_requests")
       .select(
-        "id, requester_id, message, requested_for_date, return_by, status"
+        "id, requester_id, message, requested_for_date, return_by, status, received_at"
       )
       .eq("item_id", id)
-      .in("status", ["pending", "approved"]);
+      .in("status", ["pending", "approved", "received"]);
 
     const requesterIds = (prs ?? []).map((p) => p.requester_id);
     const nameMap = new Map<string, string>();
@@ -119,8 +121,28 @@ export default async function ItemDetailPage({
         requested_for_date: p.requested_for_date,
         return_by: p.return_by,
       }));
-    activeLoanId =
-      (prs ?? []).find((p) => p.status === "approved")?.id ?? null;
+    const active = (prs ?? []).find((p) =>
+      ["approved", "received"].includes(p.status)
+    );
+    activeLoanId = active?.id ?? null;
+    activeLoanStatus = (active?.status as "approved" | "received") ?? null;
+  }
+
+  // Borrower: active loan request id (so they can mark received)
+  let myLoanId: string | null = null;
+  let myLoanStatus: "approved" | "received" | null = null;
+  if (!isOwner && isLentToMe) {
+    const { data: loan } = await supabase
+      .from("borrow_requests")
+      .select("id, status")
+      .eq("item_id", id)
+      .eq("requester_id", user.id)
+      .in("status", ["approved", "received"])
+      .maybeSingle();
+    if (loan) {
+      myLoanId = loan.id;
+      myLoanStatus = loan.status as "approved" | "received";
+    }
   }
 
   // Owner display name (for non-owner viewers)
@@ -217,10 +239,14 @@ export default async function ItemDetailPage({
         {isOwner && isLent && (
           <div className="mt-6 rounded-2xl border border-clay-100 bg-clay-100/40 p-4">
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-clay-600">
-              Currently lent out
+              {activeLoanStatus === "received"
+                ? "In their hands"
+                : "Awaiting handover"}
             </p>
             <p className="mt-2 text-base text-charcoal">
-              With {lentToName}
+              {activeLoanStatus === "received"
+                ? `${lentToName} has it`
+                : `Lent to ${lentToName}`}
               {item.return_by ? ` · back by ${formatDate(item.return_by)}` : ""}
             </p>
             {activeLoanId && (
@@ -235,12 +261,19 @@ export default async function ItemDetailPage({
         {!isOwner && isLentToMe && (
           <div className="mt-6 rounded-2xl border border-forest-100 bg-forest-50 p-4">
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-forest-700">
-              In your hands
+              {myLoanStatus === "received" ? "In your hands" : "Approved — pick it up"}
             </p>
             <p className="mt-2 text-base text-charcoal">
-              Borrowed from {ownerName}
+              {myLoanStatus === "received"
+                ? `Borrowed from ${ownerName}`
+                : `${ownerName} approved the loan`}
               {item.return_by ? ` · back by ${formatDate(item.return_by)}` : ""}
             </p>
+            {myLoanStatus === "approved" && myLoanId && (
+              <div className="mt-3">
+                <MarkReceivedButton requestId={myLoanId} />
+              </div>
+            )}
           </div>
         )}
 

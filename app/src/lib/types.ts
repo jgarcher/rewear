@@ -58,6 +58,7 @@ export type WardrobeItem = {
 export type BorrowStatus =
   | "pending"
   | "approved"
+  | "received"
   | "declined"
   | "returned"
   | "cancelled";
@@ -73,6 +74,7 @@ export type BorrowRequest = {
   return_by: string | null;
   created_at: string;
   decided_at: string | null;
+  received_at: string | null;
   returned_at: string | null;
 };
 

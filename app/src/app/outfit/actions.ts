@@ -109,15 +109,33 @@ export async function wearOutfitAction(formData: FormData) {
     .eq("user_id", user.id);
   if (outfitError) throw new Error(outfitError.message);
 
-  // Get the items in this outfit
+  // Get the items in this outfit, joined to owner + borrowed-by status
   const { data: outfitItems } = await supabase
     .from("outfit_items")
-    .select("item_id")
+    .select("item_id, wardrobe_items(user_id, lent_to_user_id)")
     .eq("outfit_id", outfitId);
 
-  if (outfitItems && outfitItems.length > 0) {
+  // Only log wear for items the user owns OR is currently borrowing.
+  // AI-suggested friend items the user hasn't borrowed yet are aspirational —
+  // they don't count as worn until the borrow flow completes.
+  type Joined = {
+    item_id: string;
+    wardrobe_items:
+      | { user_id: string; lent_to_user_id: string | null }
+      | { user_id: string; lent_to_user_id: string | null }[]
+      | null;
+  };
+  const wearableItems = ((outfitItems ?? []) as Joined[]).filter((oi) => {
+    const wi = Array.isArray(oi.wardrobe_items)
+      ? oi.wardrobe_items[0]
+      : oi.wardrobe_items;
+    if (!wi) return false;
+    return wi.user_id === user.id || wi.lent_to_user_id === user.id;
+  });
+
+  if (wearableItems.length > 0) {
     // Insert wear log entries for each item, linked to this outfit
-    const wearRows = outfitItems.map((oi) => ({
+    const wearRows = wearableItems.map((oi) => ({
       user_id: user.id,
       item_id: oi.item_id,
       worn_date: today,
@@ -146,7 +164,7 @@ export async function wearOutfitAction(formData: FormData) {
         .update({
           streak_count: newStreak,
           last_logged_date: today,
-          lifetime_rewears: profile.lifetime_rewears + outfitItems.length,
+          lifetime_rewears: profile.lifetime_rewears + wearableItems.length,
           updated_at: new Date().toISOString(),
         })
         .eq("user_id", user.id);
@@ -169,16 +187,51 @@ async function runGenerationAndSave(input: {
 }): Promise<string> {
   const supabase = await createClient();
 
-  // Fetch active wardrobe items
-  const { data: wardrobeRaw } = await supabase
-    .from("wardrobe_items")
-    .select(
-      "id, name, category, subcategory, primary_colour, secondary_colour, brand, material, seasons, occasions, condition, status"
-    )
-    .eq("user_id", input.userId)
-    .eq("status", "active");
+  // Fetch active own items + friend borrowable items in parallel
+  const [{ data: ownRaw }, { data: friendConnections }] = await Promise.all([
+    supabase
+      .from("wardrobe_items")
+      .select(
+        "id, user_id, name, category, subcategory, primary_colour, secondary_colour, brand, material, seasons, occasions, condition, status"
+      )
+      .eq("user_id", input.userId)
+      .eq("status", "active"),
+    supabase
+      .from("connections")
+      .select("friend_id")
+      .eq("user_id", input.userId),
+  ]);
 
-  const wardrobeItems = wardrobeRaw ?? [];
+  const ownItems = ownRaw ?? [];
+  const friendIds = (friendConnections ?? []).map((c) => c.friend_id);
+
+  // Friends' borrowable items (not currently lent)
+  let friendItems: typeof ownItems = [];
+  const friendOwnerNames = new Map<string, string>();
+  if (friendIds.length > 0) {
+    const [{ data: friendItemsRaw }, { data: friendProfiles }] =
+      await Promise.all([
+        supabase
+          .from("wardrobe_items")
+          .select(
+            "id, user_id, name, category, subcategory, primary_colour, secondary_colour, brand, material, seasons, occasions, condition, status"
+          )
+          .in("user_id", friendIds)
+          .in("share_state", ["borrowable", "up_for_grabs"])
+          .is("lent_to_user_id", null)
+          .eq("status", "active"),
+        supabase
+          .from("profiles")
+          .select("user_id, display_name")
+          .in("user_id", friendIds),
+      ]);
+    friendItems = friendItemsRaw ?? [];
+    for (const p of friendProfiles ?? []) {
+      friendOwnerNames.set(p.user_id, p.display_name ?? "Friend");
+    }
+  }
+
+  const wardrobeItems = [...ownItems, ...friendItems];
 
   if (wardrobeItems.length < 3) {
     throw new Error(
@@ -217,12 +270,27 @@ async function runGenerationAndSave(input: {
     new Set([...recentWearIds, ...input.additionalExclusions])
   );
 
-  // Hydrate wardrobe with wear stats
-  const wardrobeForAI = wardrobeItems.map((i) => ({
-    ...i,
-    wear_count: wearCounts[i.id] ?? 0,
-    last_worn_date: lastWornDate[i.id] ?? null,
-  }));
+  // Hydrate wardrobe with wear stats + borrowable_from for friend items
+  const wardrobeForAI = wardrobeItems.map((i) => {
+    const isOwn = i.user_id === input.userId;
+    return {
+      id: i.id,
+      name: i.name,
+      category: i.category,
+      subcategory: i.subcategory,
+      primary_colour: i.primary_colour,
+      secondary_colour: i.secondary_colour,
+      brand: i.brand,
+      material: i.material,
+      seasons: i.seasons,
+      occasions: i.occasions,
+      condition: i.condition,
+      status: i.status,
+      wear_count: wearCounts[i.id] ?? 0,
+      last_worn_date: lastWornDate[i.id] ?? null,
+      borrowable_from: isOwn ? null : friendOwnerNames.get(i.user_id) ?? null,
+    };
+  });
 
   // Weather
   const weather = await getWeather();

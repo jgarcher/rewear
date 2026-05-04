@@ -29,14 +29,24 @@ export default async function HomePage() {
     .eq("user_id", user.id)
     .single();
 
-  // Active wardrobe (drives the Log Outfit sheet + count)
-  const { data: itemsRaw } = await supabase
-    .from("wardrobe_items")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .order("created_at", { ascending: false });
-  const items = (itemsRaw ?? []) as WardrobeItem[];
+  // Active wardrobe — own items + items currently borrowed (drives the Log Outfit sheet)
+  const [{ data: ownedRaw }, { data: borrowedRaw }] = await Promise.all([
+    supabase
+      .from("wardrobe_items")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("wardrobe_items")
+      .select("*")
+      .eq("lent_to_user_id", user.id)
+      .order("created_at", { ascending: false }),
+  ]);
+  const items = [
+    ...((borrowedRaw ?? []) as WardrobeItem[]),
+    ...((ownedRaw ?? []) as WardrobeItem[]),
+  ];
 
   // Wear logs for today and yesterday — to power the widget context
   const { data: recentLogs } = await supabase
