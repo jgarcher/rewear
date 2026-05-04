@@ -20,6 +20,7 @@ type Props = {
   alreadyWorn: boolean;
   items: WardrobeItem[];
   borrowedOwnerNames: Record<string, string>; // itemId -> owner name
+  recentUseByItemId?: Record<string, number>;
 };
 
 const CATEGORY_ORDER: ItemCategory[] = [
@@ -41,6 +42,7 @@ export function SchedulePlanner({
   alreadyWorn,
   items,
   borrowedOwnerNames,
+  recentUseByItemId,
 }: Props) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
@@ -164,6 +166,9 @@ export function SchedulePlanner({
                   {g.items.map((it) => {
                     const checked = selected.has(it.id);
                     const borrowedFrom = borrowedOwnerNames[it.id] ?? null;
+                    const recentUse = recentUseByItemId?.[it.id] ?? 0;
+                    const showUse = recentUse >= 2 && !checked;
+                    const heavyUse = recentUse >= 3;
                     return (
                       <button
                         key={it.id}
@@ -199,6 +204,18 @@ export function SchedulePlanner({
                           {borrowedFrom && (
                             <span className="absolute left-1.5 top-1.5 rounded-full bg-clay-500/95 px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider text-linen-100">
                               Borrowed
+                            </span>
+                          )}
+                          {showUse && !borrowedFrom && (
+                            <span
+                              title={`Worn or scheduled ${recentUse} times this week`}
+                              className={`absolute left-1.5 top-1.5 rounded-full px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider ${
+                                heavyUse
+                                  ? "bg-clay-500 text-linen-100"
+                                  : "bg-clay-100 text-clay-600"
+                              }`}
+                            >
+                              {recentUse}× this week
                             </span>
                           )}
                         </div>

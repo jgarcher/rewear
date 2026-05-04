@@ -88,21 +88,27 @@ export default async function HomePage() {
     }
   }
 
-  // Wear logs for today and yesterday — to power the widget context
-  const { data: recentLogs } = await supabase
+  // Wear logs for the last 7 days — powers both the widget context (today /
+  // yesterday) AND the wear-frequency warnings on the Log Outfit sheet.
+  const sevenDaysAgo = new Date(Date.now() - 6 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const { data: weekLogs } = await supabase
     .from("wear_log")
     .select("item_id, worn_date")
     .eq("user_id", user.id)
-    .in("worn_date", [today, yesterday]);
+    .gte("worn_date", sevenDaysAgo);
 
   const itemMap = new Map(items.map((i) => [i.id, i]));
   const wornTodayItems: WardrobeItem[] = [];
   const wornYesterdayItems: WardrobeItem[] = [];
   const seenToday = new Set<string>();
   const seenYesterday = new Set<string>();
-  for (const log of recentLogs ?? []) {
+  const wearsThisWeek: Record<string, number> = {};
+  for (const log of weekLogs ?? []) {
     const it = itemMap.get(log.item_id);
     if (!it) continue;
+    wearsThisWeek[it.id] = (wearsThisWeek[it.id] ?? 0) + 1;
     if (log.worn_date === today && !seenToday.has(it.id)) {
       seenToday.add(it.id);
       wornTodayItems.push(it);
@@ -110,6 +116,40 @@ export default async function HomePage() {
       seenYesterday.add(it.id);
       wornYesterdayItems.push(it);
     }
+  }
+
+  // Scheduled outfits in the next 7 days (excluding any worn) — powers the
+  // forward-looking part of the wear-frequency warning.
+  const sevenDaysFromNow = new Date(Date.now() + 6 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const { data: futureScheduled } = await supabase
+    .from("outfits")
+    .select("id")
+    .eq("user_id", user.id)
+    .gte("scheduled_date", today)
+    .lte("scheduled_date", sevenDaysFromNow)
+    .is("worn_date", null);
+  const futureScheduledIds = (futureScheduled ?? []).map((o) => o.id);
+  const scheduledThisWeek: Record<string, number> = {};
+  if (futureScheduledIds.length > 0) {
+    const { data: futureLinks } = await supabase
+      .from("outfit_items")
+      .select("item_id")
+      .in("outfit_id", futureScheduledIds);
+    for (const l of futureLinks ?? []) {
+      scheduledThisWeek[l.item_id] = (scheduledThisWeek[l.item_id] ?? 0) + 1;
+    }
+  }
+
+  // Combined "in rotation" count: wears in last 7 days + scheduled in next 7 days
+  const recentUseByItemId: Record<string, number> = {};
+  for (const id of new Set([
+    ...Object.keys(wearsThisWeek),
+    ...Object.keys(scheduledThisWeek),
+  ])) {
+    recentUseByItemId[id] =
+      (wearsThisWeek[id] ?? 0) + (scheduledThisWeek[id] ?? 0);
   }
 
   // Did You Know — pick one based on day of year so it rotates daily
@@ -186,6 +226,7 @@ export default async function HomePage() {
               wardrobe={items}
               wornTodayItems={wornTodayItems}
               wornYesterdayItems={wornYesterdayItems}
+              recentUseByItemId={recentUseByItemId}
             />
           )}
         </div>

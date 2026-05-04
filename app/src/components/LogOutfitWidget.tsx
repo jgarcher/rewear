@@ -12,6 +12,7 @@ type Props = {
   wardrobe: WardrobeItem[];   // active items
   wornTodayItems: WardrobeItem[];
   wornYesterdayItems: WardrobeItem[];
+  recentUseByItemId?: Record<string, number>;
 };
 
 export function LogOutfitWidget({
@@ -21,6 +22,7 @@ export function LogOutfitWidget({
   wardrobe,
   wornTodayItems,
   wornYesterdayItems,
+  recentUseByItemId,
 }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -173,6 +175,7 @@ export function LogOutfitWidget({
           wornTodayIds={wornTodayIds}
           wornYesterdayIds={wornYesterdayIds}
           currentStreak={streak}
+          recentUseByItemId={recentUseByItemId}
         />
       )}
     </>

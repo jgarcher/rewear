@@ -91,6 +91,48 @@ export default async function PlannerPage({ params }: { params: Params }) {
 
   const items = [...borrowed, ...owned];
 
+  // Wear-frequency map: wears in last 7 days + scheduled in next 7 days,
+  // excluding the current outfit being edited so re-saving with the same
+  // pieces doesn't double-count them as "in rotation".
+  const sevenDaysAgo = new Date(Date.now() - 6 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+  const sevenDaysFromNow = new Date(Date.now() + 6 * 86400000)
+    .toISOString()
+    .slice(0, 10);
+
+  const [{ data: weekLogs }, { data: futureScheduled }] = await Promise.all([
+    supabase
+      .from("wear_log")
+      .select("item_id")
+      .eq("user_id", user.id)
+      .gte("worn_date", sevenDaysAgo),
+    supabase
+      .from("outfits")
+      .select("id")
+      .eq("user_id", user.id)
+      .gte("scheduled_date", today)
+      .lte("scheduled_date", sevenDaysFromNow)
+      .is("worn_date", null),
+  ]);
+
+  const recentUseByItemId: Record<string, number> = {};
+  for (const l of weekLogs ?? []) {
+    recentUseByItemId[l.item_id] = (recentUseByItemId[l.item_id] ?? 0) + 1;
+  }
+  const futureScheduledIds = (futureScheduled ?? [])
+    .map((o) => o.id)
+    .filter((id) => id !== existing?.id); // exclude current edit
+  if (futureScheduledIds.length > 0) {
+    const { data: futureLinks } = await supabase
+      .from("outfit_items")
+      .select("item_id")
+      .in("outfit_id", futureScheduledIds);
+    for (const l of futureLinks ?? []) {
+      recentUseByItemId[l.item_id] = (recentUseByItemId[l.item_id] ?? 0) + 1;
+    }
+  }
+
   return (
     <main className="flex-1 px-6 py-8 sm:py-12">
       <div className="mx-auto max-w-2xl">
@@ -125,6 +167,7 @@ export default async function PlannerPage({ params }: { params: Params }) {
             alreadyWorn={!!existing?.worn_date}
             items={items}
             borrowedOwnerNames={ownerNames}
+            recentUseByItemId={recentUseByItemId}
           />
         </div>
       </div>

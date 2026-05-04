@@ -14,6 +14,7 @@ type Props = {
   wornTodayIds: string[];
   wornYesterdayIds: string[];
   currentStreak: number;
+  recentUseByItemId?: Record<string, number>;
 };
 
 const CATEGORY_ORDER: ItemCategory[] = [
@@ -41,6 +42,7 @@ export function LogOutfitSheet({
   wornTodayIds,
   wornYesterdayIds,
   currentStreak,
+  recentUseByItemId,
 }: Props) {
   const [pending, startTransition] = useTransition();
   const [selected, setSelected] = useState<Set<string>>(
@@ -209,6 +211,7 @@ export function LogOutfitSheet({
                         key={it.id}
                         item={it}
                         selected={selected.has(it.id)}
+                        recentUse={recentUseByItemId?.[it.id] ?? 0}
                         onToggle={toggle}
                       />
                     ))}
@@ -225,6 +228,7 @@ export function LogOutfitSheet({
                         key={it.id}
                         item={it}
                         selected={selected.has(it.id)}
+                        recentUse={recentUseByItemId?.[it.id] ?? 0}
                         onToggle={toggle}
                       />
                     ))}
@@ -335,13 +339,19 @@ function ItemTile({
   item,
   selected,
   locked = false,
+  recentUse = 0,
   onToggle,
 }: {
   item: WardrobeItem;
   selected: boolean;
   locked?: boolean;
+  recentUse?: number;
   onToggle: (id: string) => void;
 }) {
+  // Soft-warn when this item has shown up 2+ times in the last 7 days /
+  // upcoming schedule. Stronger visual when 3+.
+  const showUse = recentUse >= 2;
+  const heavy = recentUse >= 3;
   return (
     <button
       type="button"
@@ -379,6 +389,19 @@ function ItemTile({
             }`}
           >
             ✓
+          </span>
+        )}
+        {showUse && !selected && (
+          <span
+            aria-hidden
+            title={`Worn or scheduled ${recentUse} times this week`}
+            className={`absolute left-1.5 top-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
+              heavy
+                ? "bg-clay-500 text-linen-100"
+                : "bg-clay-100 text-clay-600"
+            }`}
+          >
+            {recentUse}× this week
           </span>
         )}
       </div>
