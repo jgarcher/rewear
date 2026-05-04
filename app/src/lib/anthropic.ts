@@ -82,6 +82,9 @@ Rules:
 - Filter to season-appropriate items unless the item is tagged "all"
 - NEVER include items the user has worn in the recent_wears list
 - Some items have "borrowable_from" set — they belong to a friend. Use these sparingly: pick at most one per outfit, and only when a friend's piece is genuinely the right fit. When you do, name the friend in the reasoning ("borrow Anna's white Vejas")
+- The user may provide "favourite_pairs" — combinations they've explicitly marked as good together. When you pick one item from a favourite pair and the others fit the occasion + weather, prefer keeping them together. These are user-validated good combinations
+- "liked_combos" are recent outfits the user thumbed up — lean toward similar shapes / colour stories
+- "disliked_combos" are recent outfits the user thumbed down — never reproduce those exact item combinations, and adjust away from whatever pattern they suggest (e.g. if multiple disliked combos paired the same colours, avoid that pairing)
 
 Reasoning style — exactly 1 to 3 short sentences in the ReWear voice:
 - Reference specific items by name and a wear-data observation
@@ -119,6 +122,11 @@ type GenerateInput = {
   weatherTempC: number;
   weatherCondition: string;
   weatherDescription: string;
+  // User-curated combinations: items explicitly marked as going together
+  favouritePairs?: Array<{ name: string | null; itemIds: string[] }>;
+  // Recent feedback: combinations the user thumbed up / down
+  likedCombos?: string[][];
+  dislikedCombos?: string[][];
 };
 
 export async function generateOutfit(
@@ -150,6 +158,21 @@ export async function generateOutfit(
 - Recent wears (last 14 days, exclude these item_ids): ${
               input.recentWearIds.length > 0
                 ? input.recentWearIds.join(", ")
+                : "none"
+            }
+- Favourite pairs (user-curated combinations): ${
+              input.favouritePairs && input.favouritePairs.length > 0
+                ? JSON.stringify(input.favouritePairs)
+                : "none"
+            }
+- Liked combos (recent thumbs-up, item_ids per outfit): ${
+              input.likedCombos && input.likedCombos.length > 0
+                ? JSON.stringify(input.likedCombos)
+                : "none"
+            }
+- Disliked combos (recent thumbs-down, item_ids per outfit — avoid these patterns): ${
+              input.dislikedCombos && input.dislikedCombos.length > 0
+                ? JSON.stringify(input.dislikedCombos)
                 : "none"
             }
 

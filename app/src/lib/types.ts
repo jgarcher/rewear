@@ -78,6 +78,24 @@ export type BorrowRequest = {
   returned_at: string | null;
 };
 
+export type ItemSet = {
+  id: string;
+  user_id: string;
+  name: string | null;
+  created_at: string;
+};
+
+export type OutfitRating = "up" | "down";
+
+export type OutfitFeedback = {
+  id: string;
+  outfit_id: string;
+  user_id: string;
+  rating: OutfitRating;
+  comment: string | null;
+  created_at: string;
+};
+
 export type Connection = {
   user_id: string;
   friend_id: string;

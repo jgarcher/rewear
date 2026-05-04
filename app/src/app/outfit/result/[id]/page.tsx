@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { wearOutfitAction, shuffleOutfitAction } from "@/app/outfit/actions";
+import { OutfitFeedback } from "@/components/OutfitFeedback";
+import type { OutfitRating } from "@/lib/types";
 
 export const metadata = { title: "Outfit — ReWear" };
 
@@ -90,6 +92,14 @@ export default async function OutfitResultPage({
   const hasUnborrowedFriendItems = items.some(
     (i) => !i.isOwn && !i.isBorrowing
   );
+
+  // Existing rating (if any)
+  const { data: existingFeedback } = await supabase
+    .from("outfit_feedback")
+    .select("rating, comment")
+    .eq("outfit_id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
 
   return (
     <main className="flex-1 px-6 py-8 sm:py-12">
@@ -195,6 +205,17 @@ export default async function OutfitResultPage({
                 only count it as worn once you&apos;ve actually got it.
               </div>
             )}
+
+            {/* Feedback */}
+            <div className="mt-6">
+              <OutfitFeedback
+                outfitId={outfit.id}
+                initialRating={
+                  (existingFeedback?.rating as OutfitRating | undefined) ?? null
+                }
+                initialComment={existingFeedback?.comment ?? null}
+              />
+            </div>
 
             {/* Action row */}
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">

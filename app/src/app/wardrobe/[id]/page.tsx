@@ -6,12 +6,13 @@ import { DeleteItemButton } from "@/components/DeleteItemButton";
 import { ShareStatePicker } from "@/components/ShareStatePicker";
 import { BorrowRequestButton } from "@/components/BorrowRequestButton";
 import { AddToScheduleButton } from "@/components/AddToScheduleButton";
+import { PairingsSection } from "@/components/PairingsSection";
 import {
   IncomingRequestActions,
   MarkReceivedButton,
   MarkReturnedButton,
 } from "@/components/BorrowRequestActions";
-import { CATEGORY_LABELS, type ShareState } from "@/lib/types";
+import { CATEGORY_LABELS, type ShareState, type WardrobeItem } from "@/lib/types";
 
 export async function generateMetadata({
   params,
@@ -78,6 +79,84 @@ export default async function ItemDetailPage({
         .eq("item_id", id)
         .order("worn_date", { ascending: false })
     : { data: [] };
+
+  // Pairings (owner only): fetch the user's existing pairings for this item +
+  // the candidate pool (other active items they could pair with).
+  let partners: Array<{
+    setId: string;
+    setName: string | null;
+    item: WardrobeItem;
+  }> = [];
+  let pairingCandidates: WardrobeItem[] = [];
+  if (isOwner) {
+    // Sets that include this item
+    const { data: myLinks } = await supabase
+      .from("item_set_items")
+      .select("set_id")
+      .eq("item_id", id);
+    const setIds = (myLinks ?? []).map((l) => l.set_id);
+
+    // Set names
+    const setMeta = new Map<string, string | null>();
+    if (setIds.length > 0) {
+      const { data: sets } = await supabase
+        .from("item_sets")
+        .select("id, name")
+        .in("id", setIds);
+      for (const s of sets ?? []) setMeta.set(s.id, s.name ?? null);
+    }
+
+    // Partner item links (other items in those sets)
+    const partnerSetEntries: Array<{ set_id: string; item_id: string }> = [];
+    if (setIds.length > 0) {
+      const { data: links } = await supabase
+        .from("item_set_items")
+        .select("set_id, item_id")
+        .in("set_id", setIds)
+        .neq("item_id", id);
+      partnerSetEntries.push(...(links ?? []));
+    }
+
+    // Hydrate the partner items
+    const partnerItemIds = Array.from(
+      new Set(partnerSetEntries.map((e) => e.item_id))
+    );
+    const partnerById = new Map<string, WardrobeItem>();
+    if (partnerItemIds.length > 0) {
+      const { data: pi } = await supabase
+        .from("wardrobe_items")
+        .select("*")
+        .in("id", partnerItemIds);
+      for (const it of (pi ?? []) as WardrobeItem[]) {
+        partnerById.set(it.id, it);
+      }
+    }
+    partners = partnerSetEntries
+      .map((e) => {
+        const it = partnerById.get(e.item_id);
+        if (!it) return null;
+        return {
+          setId: e.set_id,
+          setName: setMeta.get(e.set_id) ?? null,
+          item: it,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+
+    // Candidate pool — other active items in the user's wardrobe, excluding
+    // this one and any items already paired with it.
+    const alreadyPairedIds = new Set(partnerItemIds);
+    alreadyPairedIds.add(id);
+    const { data: candRaw } = await supabase
+      .from("wardrobe_items")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .order("created_at", { ascending: false });
+    pairingCandidates = ((candRaw ?? []) as WardrobeItem[]).filter(
+      (it) => !alreadyPairedIds.has(it.id)
+    );
+  }
   const wearCount = wears?.length ?? 0;
   const lastWornDate = wears && wears.length > 0 ? wears[0].worn_date : null;
 
@@ -308,6 +387,18 @@ export default async function ItemDetailPage({
               itemId={item.id}
               current={shareState}
               isLent={isLent}
+            />
+          </div>
+        )}
+
+        {/* Owner: manual pairings */}
+        {isOwner && (
+          <div className="mt-6">
+            <PairingsSection
+              itemId={item.id}
+              itemName={item.name as string}
+              partners={partners}
+              candidates={pairingCandidates}
             />
           </div>
         )}

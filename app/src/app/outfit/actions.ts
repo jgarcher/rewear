@@ -335,6 +335,80 @@ async function runGenerationAndSave(input: {
     };
   });
 
+  // Pairings: user's curated sets that include any of the candidate items
+  const ownItemIds = ownItems.map((i) => i.id);
+  let favouritePairs: Array<{ name: string | null; itemIds: string[] }> = [];
+  if (ownItemIds.length > 0) {
+    const { data: setLinks } = await supabase
+      .from("item_set_items")
+      .select("set_id, item_id")
+      .in("item_id", ownItemIds);
+    const setIds = Array.from(
+      new Set((setLinks ?? []).map((s) => s.set_id))
+    );
+    if (setIds.length > 0) {
+      const [{ data: setMeta }, { data: allLinks }] = await Promise.all([
+        supabase.from("item_sets").select("id, name").in("id", setIds),
+        supabase
+          .from("item_set_items")
+          .select("set_id, item_id")
+          .in("set_id", setIds),
+      ]);
+      const nameById = new Map(
+        (setMeta ?? []).map((s) => [s.id, s.name as string | null])
+      );
+      const itemsBySet = new Map<string, string[]>();
+      for (const l of allLinks ?? []) {
+        const arr = itemsBySet.get(l.set_id) ?? [];
+        arr.push(l.item_id);
+        itemsBySet.set(l.set_id, arr);
+      }
+      favouritePairs = Array.from(itemsBySet.entries()).map(
+        ([setId, itemIds]) => ({
+          name: nameById.get(setId) ?? null,
+          itemIds,
+        })
+      );
+    }
+  }
+
+  // Recent thumbs-up / thumbs-down outfits (last 14 days, capped at 5 each)
+  const fourteenDaysAgoIso = new Date(
+    Date.now() - 14 * 86400000
+  ).toISOString();
+  const { data: recentFeedback } = await supabase
+    .from("outfit_feedback")
+    .select("outfit_id, rating")
+    .eq("user_id", input.userId)
+    .gte("created_at", fourteenDaysAgoIso)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  let likedCombos: string[][] = [];
+  let dislikedCombos: string[][] = [];
+  if ((recentFeedback ?? []).length > 0) {
+    const allOutfitIds = (recentFeedback ?? []).map((r) => r.outfit_id);
+    const { data: comboLinks } = await supabase
+      .from("outfit_items")
+      .select("outfit_id, item_id")
+      .in("outfit_id", allOutfitIds);
+    const itemsByOutfit = new Map<string, string[]>();
+    for (const l of comboLinks ?? []) {
+      const arr = itemsByOutfit.get(l.outfit_id) ?? [];
+      arr.push(l.item_id);
+      itemsByOutfit.set(l.outfit_id, arr);
+    }
+    for (const f of recentFeedback ?? []) {
+      const items = itemsByOutfit.get(f.outfit_id);
+      if (!items || items.length === 0) continue;
+      if (f.rating === "up" && likedCombos.length < 5) {
+        likedCombos.push(items);
+      } else if (f.rating === "down" && dislikedCombos.length < 5) {
+        dislikedCombos.push(items);
+      }
+    }
+  }
+
   // Weather
   const weather = await getWeather();
 
@@ -349,6 +423,9 @@ async function runGenerationAndSave(input: {
       weatherTempC: weather.temp_c,
       weatherCondition: weather.condition,
       weatherDescription: weather.description,
+      favouritePairs: favouritePairs.length > 0 ? favouritePairs : undefined,
+      likedCombos: likedCombos.length > 0 ? likedCombos : undefined,
+      dislikedCombos: dislikedCombos.length > 0 ? dislikedCombos : undefined,
     });
   } catch (err) {
     console.error("AI generation failed:", err);
@@ -416,4 +493,33 @@ async function runGenerationAndSave(input: {
   }
 
   return outfitId;
+}
+
+// Rate an AI-generated outfit. One rating per outfit per user — upserts.
+export async function rateOutfit(
+  outfitId: string,
+  rating: "up" | "down",
+  comment: string | null = null
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in");
+
+  const trimmed = comment?.trim();
+  const { error } = await supabase
+    .from("outfit_feedback")
+    .upsert(
+      {
+        outfit_id: outfitId,
+        user_id: user.id,
+        rating,
+        comment: trimmed || null,
+      },
+      { onConflict: "outfit_id,user_id" }
+    );
+  if (error) throw new Error(error.message);
+
+  revalidatePath(`/outfit/result/${outfitId}`);
 }
