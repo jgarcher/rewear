@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { calculateImpact, formatImpact } from "@/lib/impact";
 import { LogOutfitWidget } from "@/components/LogOutfitWidget";
+import { PlannedTodayCard } from "@/components/PlannedTodayCard";
 import type { WardrobeItem } from "@/lib/types";
 
 function greeting() {
@@ -47,6 +48,45 @@ export default async function HomePage() {
     ...((borrowedRaw ?? []) as WardrobeItem[]),
     ...((ownedRaw ?? []) as WardrobeItem[]),
   ];
+
+  // Today's scheduled outfit (if any, not yet worn)
+  const { data: scheduledTodayRows } = await supabase
+    .from("outfits")
+    .select("id, name, scheduled_date, worn_date")
+    .eq("user_id", user.id)
+    .eq("scheduled_date", today)
+    .is("worn_date", null)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const scheduledToday = scheduledTodayRows?.[0] ?? null;
+
+  let plannedItems: WardrobeItem[] = [];
+  if (scheduledToday) {
+    const { data: plannedLinks } = await supabase
+      .from("outfit_items")
+      .select("item_id")
+      .eq("outfit_id", scheduledToday.id);
+    const plannedIds = (plannedLinks ?? []).map((l) => l.item_id);
+    if (plannedIds.length > 0) {
+      // Items may include borrowed ones — use the items map
+      const allItems = items;
+      const allMap = new Map(allItems.map((i) => [i.id, i]));
+      // Also fetch any items not in the user's local map (just in case)
+      const missing = plannedIds.filter((id) => !allMap.has(id));
+      if (missing.length > 0) {
+        const { data: extraItems } = await supabase
+          .from("wardrobe_items")
+          .select("*")
+          .in("id", missing);
+        for (const it of (extraItems ?? []) as WardrobeItem[]) {
+          allMap.set(it.id, it);
+        }
+      }
+      plannedItems = plannedIds
+        .map((id) => allMap.get(id))
+        .filter((x): x is WardrobeItem => !!x);
+    }
+  }
 
   // Wear logs for today and yesterday — to power the widget context
   const { data: recentLogs } = await supabase
@@ -106,8 +146,20 @@ export default async function HomePage() {
           </h1>
         </div>
 
+        {/* Today's planned outfit (if scheduled and not yet worn) */}
+        {scheduledToday && plannedItems.length > 0 && !loggedToday && (
+          <div className="mt-6">
+            <PlannedTodayCard
+              outfitId={scheduledToday.id}
+              outfitName={scheduledToday.name ?? null}
+              scheduledDate={today}
+              items={plannedItems}
+            />
+          </div>
+        )}
+
         {/* Log Outfit Widget — the daily ritual, hero of the home page */}
-        <div className="mt-8">
+        <div className="mt-6 sm:mt-8">
           {items.length === 0 ? (
             <section className="rounded-3xl border border-linen-200 bg-linen-50 p-8 sm:p-10">
               <p className="text-xs uppercase tracking-wider text-forest-500">
@@ -212,7 +264,13 @@ export default async function HomePage() {
         )}
 
         {/* Quick links */}
-        <div className="mt-12 grid gap-3 sm:grid-cols-3">
+        <div className="mt-12 grid gap-3 sm:grid-cols-2">
+          <Link
+            href="/schedule"
+            className="rounded-xl border border-linen-200 bg-linen-50 p-4 text-center text-sm text-charcoal transition-colors hover:border-forest-500"
+          >
+            Plan ahead
+          </Link>
           <Link
             href="/wardrobe/add"
             className="rounded-xl border border-linen-200 bg-linen-50 p-4 text-center text-sm text-charcoal transition-colors hover:border-forest-500"

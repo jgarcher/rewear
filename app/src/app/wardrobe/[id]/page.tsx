@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { DeleteItemButton } from "@/components/DeleteItemButton";
 import { ShareStatePicker } from "@/components/ShareStatePicker";
 import { BorrowRequestButton } from "@/components/BorrowRequestButton";
+import { AddToScheduleButton } from "@/components/AddToScheduleButton";
 import {
   IncomingRequestActions,
   MarkReceivedButton,
@@ -369,13 +370,14 @@ export default async function ItemDetailPage({
 
         {/* Action buttons — owner only */}
         {isOwner && (
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-stretch">
             <Link
               href={`/wardrobe/${item.id}/edit`}
               className="rounded-full border border-charcoal/15 px-6 py-3 text-center text-sm font-medium text-charcoal-soft transition-colors hover:border-forest-500 hover:text-forest-700"
             >
               Edit details
             </Link>
+            <AddToScheduleButton itemId={item.id} />
           </div>
         )}
 

@@ -96,12 +96,20 @@ export default async function WardrobePage({
               </p>
             )}
           </div>
-          <Link
-            href="/wardrobe/add"
-            className="hidden rounded-full bg-forest-500 px-5 py-3 text-sm font-medium text-linen-100 transition-colors hover:bg-forest-600 sm:block"
-          >
-            + Add
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/schedule"
+              className="rounded-full border border-charcoal/15 px-4 py-3 text-sm font-medium text-charcoal-soft transition-colors hover:border-forest-500 hover:text-forest-700"
+            >
+              Plan ahead
+            </Link>
+            <Link
+              href="/wardrobe/add"
+              className="hidden rounded-full bg-forest-500 px-5 py-3 text-sm font-medium text-linen-100 transition-colors hover:bg-forest-600 sm:block"
+            >
+              + Add
+            </Link>
+          </div>
         </div>
 
         {/* Category filter */}
