@@ -3,6 +3,28 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { sendPushToUser } from "@/lib/push";
+
+// Pull display name + an item's photo URL by id; returns nulls on miss.
+// Used for friendly push copy.
+async function fetchPushContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  itemId: string
+): Promise<{ name: string; itemName: string }> {
+  const [{ data: profile }, { data: item }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("user_id", userId)
+      .single(),
+    supabase.from("wardrobe_items").select("name").eq("id", itemId).single(),
+  ]);
+  return {
+    name: profile?.display_name ?? "Someone",
+    itemName: (item?.name as string | undefined) ?? "an item",
+  };
+}
 
 // ============= Helpers =============
 
@@ -164,6 +186,20 @@ export async function requestBorrow(
 
   revalidatePath("/friends");
   revalidatePath(`/wardrobe/${itemId}`);
+
+  // Best-effort push to the owner
+  try {
+    const ctx = await fetchPushContext(supabase, user.id, itemId);
+    await sendPushToUser(item.user_id, {
+      title: "Borrow request",
+      body: `${ctx.name} wants to borrow your ${ctx.itemName}.`,
+      url: `/wardrobe/${itemId}`,
+      tag: `borrow-${inserted.id}`,
+    });
+  } catch (e) {
+    console.warn("Push send failed (requestBorrow):", e);
+  }
+
   return { requestId: inserted.id };
 }
 
@@ -214,6 +250,22 @@ export async function respondToBorrowRequest(
 
   revalidatePath("/friends");
   revalidatePath(`/wardrobe/${req.item_id}`);
+
+  // Best-effort push to the requester
+  try {
+    const ctx = await fetchPushContext(supabase, user.id, req.item_id);
+    await sendPushToUser(req.requester_id, {
+      title: response === "approve" ? "Approved 🎉" : "Borrow declined",
+      body:
+        response === "approve"
+          ? `${ctx.name} said yes to the ${ctx.itemName}.`
+          : `${ctx.name} can't lend the ${ctx.itemName} right now.`,
+      url: `/wardrobe/${req.item_id}`,
+      tag: `borrow-${requestId}`,
+    });
+  } catch (e) {
+    console.warn("Push send failed (respondToBorrowRequest):", e);
+  }
 }
 
 export async function cancelBorrowRequest(requestId: string): Promise<void> {
@@ -258,7 +310,7 @@ export async function markReceived(requestId: string): Promise<void> {
 
   const { data: req, error: reqErr } = await supabase
     .from("borrow_requests")
-    .select("id, item_id, requester_id, status")
+    .select("id, item_id, owner_id, requester_id, status")
     .eq("id", requestId)
     .single();
   if (reqErr || !req) throw new Error("Request not found");
@@ -279,6 +331,19 @@ export async function markReceived(requestId: string): Promise<void> {
   revalidatePath("/friends");
   revalidatePath("/wardrobe");
   revalidatePath(`/wardrobe/${req.item_id}`);
+
+  // Best-effort push to the owner — "X has it now"
+  try {
+    const ctx = await fetchPushContext(supabase, user.id, req.item_id);
+    await sendPushToUser(req.owner_id, {
+      title: "In their hands",
+      body: `${ctx.name} confirmed they got the ${ctx.itemName}.`,
+      url: `/wardrobe/${req.item_id}`,
+      tag: `borrow-${requestId}`,
+    });
+  } catch (e) {
+    console.warn("Push send failed (markReceived):", e);
+  }
 }
 
 export async function markReturned(requestId: string): Promise<void> {
@@ -322,4 +387,17 @@ export async function markReturned(requestId: string): Promise<void> {
   revalidatePath("/friends");
   revalidatePath("/wardrobe");
   revalidatePath(`/wardrobe/${req.item_id}`);
+
+  // Best-effort push to the requester — "thanks, return confirmed"
+  try {
+    const ctx = await fetchPushContext(supabase, user.id, req.item_id);
+    await sendPushToUser(req.requester_id, {
+      title: "Return confirmed",
+      body: `${ctx.name} marked the ${ctx.itemName} as returned.`,
+      url: "/friends",
+      tag: `borrow-${requestId}`,
+    });
+  } catch (e) {
+    console.warn("Push send failed (markReturned):", e);
+  }
 }
