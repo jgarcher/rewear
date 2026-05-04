@@ -357,12 +357,30 @@ async function runGenerationAndSave(input: {
     );
   }
 
-  // Validate item_ids exist in the wardrobe
-  const wardrobeIdSet = new Set(wardrobeItems.map((i) => i.id));
+  // Validate item_ids exist in the wardrobe AND override the AI's role with the
+  // actual item category. The AI sometimes labels a skirt or jeans as
+  // "accessory" — that's confusing. Source of truth is the item's category.
+  const itemsById = new Map(wardrobeItems.map((i) => [i.id, i]));
+  // Map item categories to outfit roles (tshirt rolls up to "top")
+  const roleFromCategory: Record<string, string> = {
+    top: "top",
+    tshirt: "top",
+    bottom: "bottom",
+    dress: "dress",
+    coat: "coat",
+    shoes: "shoes",
+    accessory: "accessory",
+  };
   if (result.outfit) {
-    result.outfit.items = result.outfit.items.filter((it) =>
-      wardrobeIdSet.has(it.item_id)
-    );
+    result.outfit.items = result.outfit.items
+      .map((it) => {
+        const real = itemsById.get(it.item_id);
+        if (!real) return null;
+        const correctRole = roleFromCategory[real.category] ?? it.role;
+        return { ...it, role: correctRole as typeof it.role };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+
     if (result.outfit.items.length < 2) {
       result.outfit = null;
       result.fallback_message =
