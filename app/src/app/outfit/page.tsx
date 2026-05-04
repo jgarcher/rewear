@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { OutfitPicker } from "@/components/OutfitPicker";
+import { WeatherIcon } from "@/components/WeatherIcon";
 import { getWeather } from "@/lib/weather";
 
 export const metadata = { title: "Outfit — ReWear" };
@@ -58,7 +59,8 @@ export default async function OutfitPage() {
         </h1>
 
         {/* Quiet weather strip */}
-        <p className="mt-3 text-sm text-charcoal-muted">
+        <p className="mt-3 inline-flex items-center gap-2 text-sm text-charcoal-muted">
+          <WeatherIcon condition={weather.condition} />
           {weather.city} · {Math.round(weather.temp_c)}°C ·{" "}
           {weather.description.toLowerCase()}
         </p>
